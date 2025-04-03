@@ -106,7 +106,7 @@ export default function SecondaryCarousel({
                           </TooltipProvider>
                         </div>
                       </div>
-                      <Button className='mx-3 mb-3 bg-background py-6 text-foreground  !shadow-none hover:text-primary-foreground'>
+                      <Button className='mx-3 mb-3 bg-background py-6 text-foreground !shadow-none hover:text-primary-foreground'>
                         Sepete Ekle
                       </Button>
                     </CardContent>

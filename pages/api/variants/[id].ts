@@ -39,7 +39,7 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
 
     case 'PUT':
       try {
-        const { price, stock, images, variantValues } = req.body;
+        const { price, stock, costPerItem, comparativePrice, images, variantValues, sku, barcode } = req.body;
 
         const existingVariant = await prisma.productVariant.findUnique({
           where: { id: parseInt(id) },
@@ -58,17 +58,29 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
           }
         }
 
+        // Güncelleme verilerini oluştur
+        const updateData: any = {};
+        
+        // Sadece gönderilen alanları güncelle
+        if (stock !== undefined) updateData.stock = stock;
+        if (price !== undefined) updateData.price = price;
+        if (comparativePrice !== undefined) updateData.comparativePrice = comparativePrice;
+        if (costPerItem !== undefined) updateData.costPerItem = costPerItem;
+        if (imageUrls.length > 0) updateData.imageUrls = imageUrls;
+        if (sku !== undefined) updateData.sku = sku;
+        if (barcode !== undefined) updateData.barcode = barcode;
+        
+        // Variant değerleri varsa güncelle
+        if (variantValues) {
+          updateData.variantValues = {
+            set: variantValues.map((valueId: number) => ({ id: valueId })),
+          };
+        }
+
         // Varyant güncelleme
         const updatedVariant = await prisma.productVariant.update({
           where: { id: parseInt(id) },
-          data: {
-            stock,
-            price,
-            imageUrls,
-            variantValues: {
-              set: variantValues.map((valueId: number) => ({ id: valueId })),
-            },
-          },
+          data: updateData,
         });
 
         return res.status(200).json(updatedVariant);

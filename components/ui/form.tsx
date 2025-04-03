@@ -6,14 +6,15 @@ import {
   ControllerProps,
   FieldPath,
   FieldValues,
-  FormProvider,
+  FormProvider as RHFFormProvider,
   useFormContext,
 } from "react-hook-form"
 
 import { cn } from "@/lib/utils"
 import { Label } from "@/components/ui/label"
 
-const Form = FormProvider
+const Form = RHFFormProvider
+const FormProvider = RHFFormProvider
 
 type FormFieldContextValue<
   TFieldValues extends FieldValues = FieldValues,
@@ -42,13 +43,20 @@ const FormField = <
 const useFormField = () => {
   const fieldContext = React.useContext(FormFieldContext)
   const itemContext = React.useContext(FormItemContext)
-  const { getFieldState, formState } = useFormContext()
-
-  const fieldState = getFieldState(fieldContext.name, formState)
-
+  
+  const formContext = useFormContext()
+  
+  if (!formContext) {
+    throw new Error("useFormField should be used within a FormProvider")
+  }
+  
+  const { getFieldState, formState } = formContext
+  
   if (!fieldContext) {
     throw new Error("useFormField should be used within <FormField>")
   }
+  
+  const fieldState = getFieldState(fieldContext.name, formState)
 
   const { id } = itemContext
 
@@ -167,10 +175,13 @@ FormMessage.displayName = "FormMessage"
 export {
   useFormField,
   Form,
+  FormProvider,
   FormItem,
   FormLabel,
   FormControl,
   FormDescription,
   FormMessage,
   FormField,
+  FormFieldContext,
+  FormItemContext,
 }

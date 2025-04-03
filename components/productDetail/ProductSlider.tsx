@@ -28,7 +28,17 @@ function ProductSlider({ productDetail }: { productDetail: ProductDetails }) {
             className={`mb-3 cursor-pointer  ${index === currentImageIndex ? 'border border-gray-500 p-2 transition duration-700 ease-in-out' : ''}`}
             onClick={() => handleThumbnailClick(index)}
           >
-            <Image src={image} alt={''} width={129} height={156} />
+            <div className="relative w-[129px] h-[156px]">
+              <Image 
+                src={image} 
+                alt={`Ürün Görsel ${index + 1}`} 
+                fill
+                sizes="129px"
+                style={{ objectFit: 'cover' }}
+                className="rounded-sm"
+                priority={index === 0}
+              />
+            </div>
           </div>
         ))}
       </div>
@@ -42,16 +52,23 @@ function ProductSlider({ productDetail }: { productDetail: ProductDetails }) {
               >
                 <div>
                   <Card className='border-none shadow-none'>
-                    <CardContent className='flex aspect-square items-center justify-center p-0'>
-                      <Image src={image} alt={''} width={675} height={837} />
+                    <CardContent className='p-0'>
+                      <div className="relative w-full h-[600px]">
+                        <Image 
+                          src={image} 
+                          alt={`${productDetail.title} - Görsel ${index + 1}`} 
+                          fill
+                          sizes="(max-width: 768px) 100vw, 600px"
+                          style={{ objectFit: 'contain' }}
+                          priority={index === 0}
+                        />
+                      </div>
                     </CardContent>
                   </Card>
                 </div>
               </CarouselItem>
             ))}
           </CarouselContent>
-          <CarouselPrevious className='left-5' />
-          <CarouselNext className='right-5' />
         </Carousel>
       </div>
     </div>

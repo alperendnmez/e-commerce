@@ -1,14 +1,14 @@
-import Features from '@/components/Features'
 import MainCarousel from '@/components/MainCarousel'
-import ProductCarousel from '@/components/ProductCarousel'
+import FeaturedCategories from '@/components/FeaturedCategories'
+import NewArrivals from '@/components/NewArrivals'
+import BestSellers from '@/components/BestSellers'
+import AllProducts from '@/components/AllProducts'
 import MainLayout from '@/components/layouts/MainLayout'
 import { NextPageWithLayout } from '@/lib/types'
 import { Inter } from 'next/font/google'
 import { ReactElement } from 'react'
-import { bestsellers } from '@/fakedata/bestsellers'
-import { featuredProducts } from '@/fakedata/featuredProducts'
 import CTA from '@/components/CTA'
-import { newArrive } from '@/fakedata/newarrive'
+import { Toaster } from '@/components/ui/toaster'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -18,12 +18,13 @@ const Home: NextPageWithLayout = () => {
       <main
         className={`flex flex-col items-center justify-between ${inter.className}`}
       >
+        <Toaster />
         <MainCarousel />
-        <Features />
-        <ProductCarousel carouselData={bestsellers} />
         <CTA />
-        <ProductCarousel carouselData={featuredProducts} />
-        <ProductCarousel carouselData={newArrive} />
+        <BestSellers />
+        <FeaturedCategories />
+        <NewArrivals />
+        <AllProducts />
       </main>
     </>
   )

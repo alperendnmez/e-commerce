@@ -9,7 +9,7 @@ export type MainLayoutProps = {
   children: React.ReactNode
 }
 
-interface Product {
+export interface Product {
   title: string
   price: string
   discountedPrice?: string
@@ -19,6 +19,7 @@ interface Product {
     src: string
   }
   slug: string
+  imageUrls: string[]
 }
 
 export interface CarouselData {
@@ -27,6 +28,7 @@ export interface CarouselData {
   products: Product[]
 }
 export interface ProductDetails {
+  id?: number
   title: string
   priceRange: string
   description: string
@@ -44,6 +46,36 @@ export interface ProductDetails {
     src3: string
     src4: string
   }
+  variants?: any[]
+  variantGroups?: {
+    id: number
+    name: string
+    values: {
+      id: number
+      value: string
+    }[]
+  }[]
+  originalData?: {
+    id: number
+    name: string
+    description: string
+    price: number
+    stock: number
+    sku: string
+    categoryId: number
+    brandId: number
+    category?: {
+      id: number
+      name: string
+      slug: string
+    }
+    brand?: {
+      id: number
+      name: string
+      slug: string
+    }
+    [key: string]: any
+  }
 }
 interface ProductRelation {
   title: string
@@ -54,6 +86,8 @@ interface ProductRelation {
   img: {
     src: string
   }
+  slug: string
+  id?: number
 }
 
 export interface RelatedData {

@@ -7,15 +7,15 @@ const s3 = new AWS.S3({
 });
 
 export const uploadToS3 = async (file: string, key: string) => {
-  if (!process.env.AWS_BUCKET_NAME) {
-    throw new Error('AWS_BUCKET_NAME is not defined in environment variables.');
+  if (!process.env.AWS_S3_BUCKET_NAME) {
+    throw new Error('AWS_S3_BUCKET_NAME is not defined in environment variables.');
   }
 
   const base64Data = Buffer.from(file.replace(/^data:image\/\w+;base64,/, ''), 'base64');
   const contentType = file.match(/data:(.*?);base64/)?.[1] || 'application/octet-stream';
 
   const params = {
-    Bucket: process.env.AWS_BUCKET_NAME,
+    Bucket: process.env.AWS_S3_BUCKET_NAME,
     Key: key,
     Body: base64Data,
     ContentType: contentType,
@@ -27,13 +27,13 @@ export const uploadToS3 = async (file: string, key: string) => {
 };
 
 export const deleteFromS3 = async (key: string) => {
-  if (!process.env.AWS_BUCKET_NAME) {
-    throw new Error('AWS_BUCKET_NAME is not defined in environment variables.');
+  if (!process.env.AWS_S3_BUCKET_NAME) {
+    throw new Error('AWS_S3_BUCKET_NAME is not defined in environment variables.');
   }
 
-  const bucketUrl = `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/`;
+  const bucketUrl = `https://${process.env.AWS_S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/`;
   const params = {
-    Bucket: process.env.AWS_BUCKET_NAME,
+    Bucket: process.env.AWS_S3_BUCKET_NAME,
     Key: key.replace(bucketUrl, ''),
   };
 

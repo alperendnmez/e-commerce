@@ -1,29 +1,625 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["metrics"]
+  engineType      = "binary"
+}
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-generator client {
-  provider = "prisma-client-js"
+model User {
+  id                     Int                    @id @default(autoincrement())
+  email                  String                 @unique
+  password               String
+  role                   Role                   @default(USER)
+  firstName              String
+  lastName               String
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
+  avatarUrl              String?
+  emailVerified          DateTime?
+  twoFactorEnabled       Boolean                @default(false)
+  twoFactorSecret        String?
+  emailVerificationToken String?                @unique
+  tokenExpires           DateTime?
+  birthDate              DateTime?
+  gender                 String?
+  lastLogin              DateTime?
+  newsletter             Boolean                @default(false)
+  phone                  String?
+  addresses              Address[]
+  campaigns              Campaign[]
+  cart                   Cart?
+  giftCards              GiftCard[]
+  notifications          Notification[]
+  orders                 Order[]
+  returnRequests         ReturnRequest[]
+  reviews                Review[]
+  systemLogs             SystemLog[]
+  transactionLogs        TransactionLog[]
+  coupons                UserCoupon[]
+  favoriteProducts       UserFavoriteProducts[]
+  stockReservations      StockReservation[]
+  blogPosts              BlogPost[]
+}
+
+model Product {
+  id             Int                    @id @default(autoincrement())
+  name           String
+  description    String?
+  categoryId     Int
+  slug           String                 @unique
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @default(now())
+  brandId        Int?
+  seoDescription String?
+  seoTitle       String?
+  published      Boolean                @default(false)
+  imageUrls      String[]
+  basePrice      Float                  @default(0)
+  comparativePrice Float?
+  taxIncluded    Boolean                @default(true)
+  costPerItem    Float?                 @default(0)
+  stock          Int                    @default(0)
+  sku            String?
+  barcode        String?
+  isPhysicalProduct Boolean             @default(true)
+  weight         Float?
+  weightUnit     String?                @default("kg")
+  countryOfOrigin String?
+  hsCode         String?
+  cartItems      CartItem[]
+  orderItems     OrderItem[]
+  brand          Brand?                 @relation(fields: [brandId], references: [id])
+  category       Category               @relation(fields: [categoryId], references: [id])
+  variants       ProductVariant[]
+  reviews        Review[]
+  favoritedBy    UserFavoriteProducts[]
+  variantGroups  VariantGroup[]
+  featuredImage  String?
+  thumbnail      String?
+  gallery        String[]               @default([])
+}
+
+model ProductVariant {
+  id            Int               @id @default(autoincrement())
+  productId     Int
+  stock         Int
+  price         Float
+  comparativePrice Float?
+  costPerItem   Float?            @default(0)
+  imageUrls     String[]
+  sku           String?
+  barcode       String?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @default(now())
+  CartItem      CartItem[]
+  OrderItem     OrderItem[]
+  product       Product           @relation(fields: [productId], references: [id])
+  variantValues VariantValue[]    @relation("ProductVariantToVariantValue")
+  reservations   StockReservation[]
+}
+
+model VariantGroup {
+  id        Int            @id @default(autoincrement())
+  name      String
+  productId Int
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @default(now())
+  product   Product        @relation(fields: [productId], references: [id])
+  values    VariantValue[]
+}
+
+model VariantValue {
+  id              Int              @id @default(autoincrement())
+  value           String
+  variantGroupId  Int
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @default(now())
+  variantGroup    VariantGroup     @relation(fields: [variantGroupId], references: [id])
+  productVariants ProductVariant[] @relation("ProductVariantToVariantValue")
+}
+
+model Review {
+  id                 Int      @id @default(autoincrement())
+  rating             Int
+  comment            String
+  userId             Int
+  productId          Int
+  createdAt          DateTime @default(now())
+  helpfulCount       Int      @default(0)
+  isVerifiedPurchase Boolean  @default(false)
+  reportCount        Int      @default(0)
+  status             String   @default("pending")
+  title              String?
+  updatedAt          DateTime @updatedAt
+  orderId            Int?
+  order              Order?   @relation("OrderReviews", fields: [orderId], references: [id])
+  product            Product  @relation(fields: [productId], references: [id])
+  user               User     @relation(fields: [userId], references: [id])
+}
+
+model Category {
+  id                     Int        @id @default(autoincrement())
+  name                   String
+  description            String?
+  slug                   String     @unique
+  parentId               Int?
+  seoDescription         String?
+  seoTitle               String?
+  displayOrder           Int        @default(0)
+  isActive               Boolean    @default(true)
+  createdAt              DateTime   @default(now())
+  updatedAt              DateTime   @updatedAt
+  archivedAt             DateTime?
+  bannerUrl              String?
+  customFilters          String?
+  defaultSortOrder       String?
+  featuredProducts       String?
+  isArchived             Boolean    @default(false)
+  isFeatured             Boolean    @default(false)
+  showInSlider           Boolean    @default(false)
+  productsPerPage        Int        @default(12)
+  seoKeywords            String?
+  showInFooter           Boolean    @default(false)
+  showInHeader           Boolean    @default(false)
+  showInSidebar          Boolean    @default(true)
+  iconUrl                String?
+  imageUrl               String?
+  mobileBannerUrl        String?
+  allowProductComparison Boolean    @default(true)
+  compareAttributes      String?
+  customAttributes       String?
+  maxCompareProducts     Int        @default(4)
+  allowedBrands          String?
+  deliveryOptions        String?
+  freeShipping           Boolean    @default(false)
+  freeShippingThreshold  Float?
+  paymentOptions         String?
+  priceRanges            String?
+  showOutOfStock         Boolean    @default(true)
+  stockFilterEnabled     Boolean    @default(true)
+  parent                 Category?  @relation("CategoryToCategory", fields: [parentId], references: [id])
+  children               Category[] @relation("CategoryToCategory")
+  products               Product[]
+}
+
+model Order {
+  id                   Int                   @id @default(autoincrement())
+  userId               Int
+  status               OrderStatus
+  totalPrice           Float
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  billingAddressId     Int?
+  couponId             Int?
+  shippingAddressId    Int?
+  discountAmount       Float?
+  orderNumber          String
+  shippingCost         Float?
+  shippingMethod       String?
+  subtotal             Float?
+  taxAmount            Float?
+  trackingNumber       String?
+  adminNotes           String?
+  paymentMethod        String?
+  giftCardTransactions GiftCardTransaction[]
+  billingAddress       Address?              @relation("BillingAddress", fields: [billingAddressId], references: [id])
+  coupon               Coupon?               @relation(fields: [couponId], references: [id])
+  shippingAddress      Address?              @relation("ShippingAddress", fields: [shippingAddressId], references: [id])
+  user                 User                  @relation(fields: [userId], references: [id])
+  orderItems           OrderItem[]           @relation("OrderItems")
+  timeline             OrderTimeline[]
+  payment              Payment?
+  returnRequests       ReturnRequest[]
+  reviews              Review[]              @relation("OrderReviews")
+  transactionLogs      TransactionLog[]
+}
+
+model OrderTimeline {
+  id          Int         @id @default(autoincrement())
+  orderId     Int
+  description String
+  date        DateTime    @default(now())
+  createdAt   DateTime    @default(now())
+  status      OrderStatus
+  order       Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+}
+
+model Address {
+  id               Int      @id @default(autoincrement())
+  userId           Int
+  street           String
+  city             String
+  state            String
+  zipCode          String
+  country          String
+  phone            String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  district         String?
+  firstName        String
+  isDefault        Boolean  @default(false)
+  isDefaultBilling Boolean  @default(false)
+  lastName         String
+  title            String
+  user             User     @relation(fields: [userId], references: [id])
+  billingOrders    Order[]  @relation("BillingAddress")
+  shippingOrders   Order[]  @relation("ShippingAddress")
+}
+
+model Cart {
+  id        Int        @id @default(autoincrement())
+  userId    Int        @unique
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @default(now())
+  user      User       @relation(fields: [userId], references: [id])
+  items     CartItem[]
+}
+
+model CartItem {
+  id        Int             @id @default(autoincrement())
+  cartId    Int
+  productId Int
+  quantity  Int
+  price     Float
+  variantId Int?
+  cart      Cart            @relation(fields: [cartId], references: [id])
+  product   Product         @relation(fields: [productId], references: [id])
+  variant   ProductVariant? @relation(fields: [variantId], references: [id])
+}
+
+model OrderItem {
+  id            Int             @id @default(autoincrement())
+  orderId       Int
+  productId     Int
+  quantity      Int
+  price         Float
+  variantId     Int?
+  order         Order           @relation("OrderItems", fields: [orderId], references: [id], onDelete: Cascade)
+  product       Product         @relation(fields: [productId], references: [id])
+  variant       ProductVariant? @relation(fields: [variantId], references: [id])
+  ReturnRequest ReturnRequest[]
+}
+
+model Payment {
+  id                    Int           @id @default(autoincrement())
+  orderId               Int           @unique
+  amount                Float
+  method                String
+  status                PaymentStatus @default(PENDING)
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+  providerName          String?
+  providerTransactionId String?
+  cardBrand             String?
+  cardLastFour          String?
+  refundAmount          Float?
+  refundDate            DateTime?
+  refundReason          String?
+  order                 Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+}
+
+model Coupon {
+  id              Int          @id @default(autoincrement())
+  code            String       @unique
+  type            CouponType
+  value           Float
+  validFrom       DateTime
+  validUntil      DateTime
+  isActive        Boolean      @default(true)
+  maxUsage        Int?
+  usageCount      Int          @default(0)
+  maxUsagePerUser Int?
+  minOrderAmount  Float?
+  maxDiscount     Float?
+  description     String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  maxUsageLimit   Int?
+  orders          Order[]
+  userCoupons     UserCoupon[]
+}
+
+model UserCoupon {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  couponId  Int
+  isUsed    Boolean   @default(false)
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  coupon    Coupon    @relation(fields: [couponId], references: [id])
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@unique([userId, couponId])
+}
+
+model GiftCard {
+  id             Int                   @id @default(autoincrement())
+  code           String                @unique
+  userId         Int?
+  initialBalance Float
+  currentBalance Float
+  status         GiftCardStatus        @default(ACTIVE)
+  validFrom      DateTime              @default(now())
+  validUntil     DateTime
+  lastUsed       DateTime?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  user           User?                 @relation(fields: [userId], references: [id])
+  transactions   GiftCardTransaction[]
+}
+
+model GiftCardTransaction {
+  id          Int      @id @default(autoincrement())
+  giftCardId  Int
+  amount      Float
+  orderId     Int?
+  description String
+  createdAt   DateTime @default(now())
+  giftCard    GiftCard @relation(fields: [giftCardId], references: [id])
+  order       Order?   @relation(fields: [orderId], references: [id])
+}
+
+model Campaign {
+  id             Int      @id @default(autoincrement())
+  name           String
+  description    String?
+  type           String
+  startDate      DateTime
+  endDate        DateTime
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  categoryId     Int?
+  minOrderAmount Float?
+  productId      Int?
+  userId         Int?
+  value          Float?
+  user           User?    @relation(fields: [userId], references: [id])
+
+  @@index([type])
+  @@index([isActive])
+  @@index([startDate, endDate])
+}
+
+model UserFavoriteProducts {
+  userId    Int
+  productId Int
+  product   Product @relation(fields: [productId], references: [id])
+  user      User    @relation(fields: [userId], references: [id])
+
+  @@id([userId, productId])
+}
+
+model Brand {
+  id                 Int       @id @default(autoincrement())
+  name               String
+  slug               String    @unique
+  seoDescription     String?
+  seoTitle           String?
+  createdAt          DateTime  @default(now())
+  description        String?
+  displayOrder       Int       @default(0)
+  isActive           Boolean   @default(true)
+  isFeatured         Boolean   @default(false)
+  logoUrl            String?
+  updatedAt          DateTime  @updatedAt
+  website            String?
+  content            String?
+  seoKeywords        String?
+  bannerUrl          String?
+  coverImageUrl      String?
+  defaultSortOrder   String?
+  productListingType String?
+  productsPerPage    Int       @default(12)
+  showInFooter       Boolean   @default(false)
+  showInHeader       Boolean   @default(true)
+  showInSidebar      Boolean   @default(true)
+  archivedAt         DateTime?
+  isArchived         Boolean   @default(false)
+  products           Product[]
+}
+
+model ReturnRequest {
+  id           Int              @id @default(autoincrement())
+  orderItemId  Int?
+  reason       String
+  status       ReturnStatus     @default(PENDING)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  description  String?
+  notes        String?
+  orderId      Int
+  refundAmount Float?
+  refundDate   DateTime?
+  refundMethod String?
+  type         ReturnType       @default(RETURN)
+  userId       Int
+  order        Order            @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  OrderItem    OrderItem?       @relation(fields: [orderItemId], references: [id])
+  user         User             @relation(fields: [userId], references: [id])
+  timeline     ReturnTimeline[]
+}
+
+model ReturnTimeline {
+  id              Int           @id @default(autoincrement())
+  returnRequestId Int
+  status          String
+  description     String
+  date            DateTime      @default(now())
+  createdAt       DateTime      @default(now())
+  returnRequest   ReturnRequest @relation(fields: [returnRequestId], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  message   String
+  type      String
+  userId    Int?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User?    @relation(fields: [userId], references: [id])
+}
+
+model SystemLog {
+  id          Int      @id @default(autoincrement())
+  type        String
+  action      String
+  description String
+  ipAddress   String?
+  userId      Int?
+  createdAt   DateTime @default(now())
+  metadata    String?
+  user        User?    @relation(fields: [userId], references: [id])
+
+  @@index([type])
+  @@index([action])
+  @@index([createdAt])
+  @@index([userId])
+}
+
+model TransactionLog {
+  id              Int      @id @default(autoincrement())
+  transactionType String
+  entityId        Int
+  entityCode      String?
+  status          String
+  orderId         Int?
+  userId          Int?
+  amount          Float?
+  idempotencyKey  String?
+  description     String?
+  details         Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  order           Order?   @relation(fields: [orderId], references: [id])
+  user            User?    @relation(fields: [userId], references: [id])
+
+  @@index([transactionType])
+  @@index([entityId])
+  @@index([entityCode])
+  @@index([status])
+  @@index([orderId])
+  @@index([userId])
+  @@index([createdAt])
+  @@index([idempotencyKey])
+}
+
+model StockReservation {
+  id                Int       @id @default(autoincrement())
+  variantId         Int
+  quantity          Int
+  sessionId         String
+  userId            Int?
+  createdAt         DateTime  @default(now())
+  expiresAt         DateTime
+  status            ReservationStatus @default(ACTIVE)
+  
+  variant           ProductVariant @relation(fields: [variantId], references: [id])
+  user              User?        @relation(fields: [userId], references: [id])
+  
+  @@index([sessionId])
+  @@index([userId])
+  @@index([variantId])
+  @@index([expiresAt])
+  @@index([status])
+}
+
+model BlogPost {
+  id             String   @id @default(uuid())
+  title          String
+  slug           String   @unique
+  content        String   @db.Text
+  excerpt        String?
+  imageUrl       String?
+  published      Boolean  @default(false)
+  publishedAt    DateTime?
+  seoTitle       String?
+  seoDescription String?
+  seoKeywords    String?
+  viewCount      Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  authorId       Int
+  author         User     @relation(fields: [authorId], references: [id])
+  categories     BlogPostToCategory[]
+  tags           BlogPostToTag[]
+}
+
+model BlogCategory {
+  id              String   @id @default(uuid())
+  name            String
+  slug            String   @unique
+  description     String?
+  seoTitle        String?
+  seoDescription  String?
+  seoKeywords     String?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  posts           BlogPostToCategory[]
+}
+
+model BlogTag {
+  id          String   @id @default(uuid())
+  name        String
+  slug        String   @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  posts       BlogPostToTag[]
+}
+
+model BlogPostToCategory {
+  post        BlogPost     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  postId      String
+  category    BlogCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  categoryId  String
+  assignedAt  DateTime     @default(now())
+
+  @@id([postId, categoryId])
+}
+
+model BlogPostToTag {
+  post        BlogPost     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  postId      String
+  tag         BlogTag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  tagId       String
+  assignedAt  DateTime     @default(now())
+
+  @@id([postId, tagId])
 }
 
 enum Role {
   USER
   ADMIN
+  EDITOR
 }
 
 enum OrderStatus {
   PENDING
+  PAID
   PROCESSING
   SHIPPED
   DELIVERED
-  CANCELED
+  CANCELLED
+  REFUNDED
+  COMPLETED
+  RETURNED
 }
 
 enum PaymentStatus {
   PENDING
   COMPLETED
   FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
 }
 
 enum ReturnStatus {
@@ -31,252 +627,28 @@ enum ReturnStatus {
   APPROVED
   REJECTED
   REFUNDED
+  COMPLETED
 }
 
-model User {
-  id                     Int       @id @default(autoincrement())
-  email                  String    @unique
-  password               String
-  role                   Role      @default(USER)
-  firstName              String 
-  lastName               String 
-  emailVerified          DateTime?
-  emailVerificationToken String?   @unique
-  tokenExpires           DateTime?
-  twoFactorEnabled       Boolean   @default(false)
-  twoFactorSecret        String?
-  avatarUrl              String?
-
-  cart                   Cart?
-  orders                 Order[]
-  addresses              Address[]
-  reviews                Review[]
-  favoriteProducts       UserFavoriteProducts[]
-
-  createdAt              DateTime  @default(now())
-  updatedAt              DateTime  @updatedAt
+enum ReturnType {
+  RETURN
+  CANCEL
 }
 
-
-
-
-model Product {
-  id              Int               @id @default(autoincrement())
-  name            String
-  description     String?
-  category        Category           @relation(fields: [categoryId], references: [id])
-  categoryId      Int
-  slug            String             @unique
-  orderItems      OrderItem[]
-  cartItems       CartItem[]
-  variants        ProductVariant[]   // Varyantlarla ilişki
-  variantGroups   VariantGroup[]     // Variant Grupları (Renk, Beden gibi)
-  reviews         Review[]           // Review bağlantısı düzeltildi
-  published       Boolean            @default(false)
-
-  seoTitle        String?
-  seoDescription  String?
-
-  brandId         Int?
-  brand           Brand?             @relation(fields: [brandId], references: [id])
-
-  favoritedBy     UserFavoriteProducts[]
-
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @default(now())
+enum CouponType {
+  PERCENTAGE
+  FIXED
 }
 
-model ProductVariant {
-  id              Int             @id @default(autoincrement())
-  product         Product          @relation(fields: [productId], references: [id])
-  productId       Int
-  variantValues   VariantValue[]   // Kombinasyonu oluşturan değerler
-  stock           Int
-  price           Float
-  imageUrls       String[]         // Varyanta özel resimler
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @default(now())
-
-  CartItem CartItem[]
-
-  OrderItem OrderItem[]
+enum GiftCardStatus {
+  ACTIVE
+  USED
+  EXPIRED
 }
 
-model VariantGroup {
-  id              Int              @id @default(autoincrement())
-  name            String           // Örneğin: Renk, Beden
-  product         Product          @relation(fields: [productId], references: [id])
-  productId       Int
-  values          VariantValue[]
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @default(now())
-}
-
-model VariantValue {
-  id              Int             @id @default(autoincrement())
-  value           String          // Örneğin: Siyah, Medium
-  variantGroup    VariantGroup    @relation(fields: [variantGroupId], references: [id])
-  variantGroupId  Int
-  productVariants ProductVariant[] // Bu değerle ilişkili ürün varyantları
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @default(now())
-}
-
-
-model Review {
-  id         Int      @id @default(autoincrement())
-  rating     Int
-  comment    String
-  user       User     @relation(fields: [userId], references: [id])
-  userId     Int
-  product    Product  @relation(fields: [productId], references: [id])
-  productId  Int
-  createdAt  DateTime @default(now())
-}
-
-
-model Category {
-  id              Int        @id @default(autoincrement())
-  name            String
-  description     String?
-  slug            String     @unique
-
-  seoTitle        String?
-  seoDescription  String?
-
-  parentId        Int?
-  parent          Category?  @relation("CategoryToParent", fields: [parentId], references: [id])
-  children        Category[] @relation("CategoryToParent")
-  products        Product[]
-}
-
-model Order {
-  id               Int         @id @default(autoincrement())
-  user             User        @relation(fields: [userId], references: [id])
-  userId           Int
-  status           OrderStatus @default(PENDING)
-  totalPrice       Float
-  orderItems       OrderItem[]
-  payment          Payment?
-
-  shippingAddressId Int?
-  billingAddressId  Int?
-  shippingAddress   Address?   @relation("OrderShippingAddress", fields: [shippingAddressId], references: [id])
-  billingAddress    Address?   @relation("OrderBillingAddress", fields: [billingAddressId], references: [id])
-
-  couponId         Int?
-  coupon           Coupon?     @relation(fields: [couponId], references: [id])
-
-  createdAt        DateTime    @default(now())
-  updatedAt        DateTime    @default(now())
-}
-
-
-
-model Address {
-  id             Int      @id @default(autoincrement())
-  user           User     @relation(fields: [userId], references: [id])
-  userId         Int
-  street         String
-  city           String
-  state          String
-  zipCode        String
-  country        String
-  phone          String
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @default(now())
-
-  // Relation fields for Order shipping and billing
-  shippingOrders Order[] @relation("OrderShippingAddress")
-  billingOrders  Order[] @relation("OrderBillingAddress")
-}
-
-model Cart {
-  id        Int        @id @default(autoincrement())
-  user      User       @relation(fields: [userId], references: [id])
-  userId    Int        @unique
-  items     CartItem[]
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @default(now())
-}
-
-model CartItem {
-  id        Int             @id @default(autoincrement())
-  cart      Cart            @relation(fields: [cartId], references: [id])
-  cartId    Int
-  product   Product          @relation(fields: [productId], references: [id])
-  productId Int
-  variant   ProductVariant?  @relation(fields: [variantId], references: [id]) 
-  variantId Int?
-  quantity  Int
-  price     Float
-}
-
-model OrderItem {
-  id             Int             @id @default(autoincrement())
-  order          Order           @relation(fields: [orderId], references: [id])
-  orderId        Int
-  product        Product         @relation(fields: [productId], references: [id])
-  productId      Int
-  variant        ProductVariant? @relation(fields: [variantId], references: [id]) 
-  variantId      Int?
-  quantity       Int
-  price          Float
-
-  returnRequests ReturnRequest[]
-}
-
-
-model Payment {
-  id         Int      @id @default(autoincrement())
-  order      Order    @relation(fields: [orderId], references: [id])
-  orderId    Int      @unique
-  amount     Float
-  method     String
-  status     PaymentStatus @default(PENDING)
-  providerName          String?
-  providerTransactionId String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @default(now())
-}
-
-model Coupon {
-  id          Int      @id @default(autoincrement())
-  code        String   @unique
-  discountPct Float?
-  discountAmt Float?
-  validFrom   DateTime?
-  validUntil  DateTime?
-  usageCount  Int      @default(0)
-  maxUsage    Int?
-  orders      Order[]
-}
-
-model UserFavoriteProducts {
-  userId    Int
-  productId Int
-  user      User    @relation(fields: [userId], references: [id])
-  product   Product @relation(fields: [productId], references: [id])
-
-  @@id([userId, productId])
-}
-
-model Brand {
-  id             Int      @id @default(autoincrement())
-  name           String
-  slug           String   @unique
-  seoTitle       String?  
-  seoDescription String?  // Optional SEO Description
-  products       Product[]
-}
-
-
-model ReturnRequest {
-  id          Int        @id @default(autoincrement())
-  orderItem   OrderItem  @relation(fields: [orderItemId], references: [id])
-  orderItemId Int
-  reason      String
-  status      ReturnStatus @default(PENDING)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @default(now())
+enum ReservationStatus {
+  ACTIVE
+  CONVERTED
+  EXPIRED
+  CANCELLED
 }

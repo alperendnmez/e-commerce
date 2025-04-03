@@ -37,30 +37,40 @@ function SignInPage() {
     }
   })
 
-  useEffect(() => {
-    console.log(session)
-    if (status === 'authenticated') {
-      if (session?.user.role === 'ADMIN') {
-        router.push('/dashboard')
-      } else {
-        router.push('/')
-      }
-    }
-  }, [status, session, router])
-
   const onSubmit = async (data: z.infer<typeof SignInFormSchema>) => {
     setIsLoading(true)
-    const result = await signIn('credentials', {
-      email: data.email,
-      password: data.password,
-      redirect: false
-    })
-    setIsLoading(false)
-
-    if (result?.error) {
-      toast({ title: 'Hata!', description: result.error })
+    console.log("Giriş deneniyor:", data.email);
+    
+    try {
+      const result = await signIn('credentials', {
+        email: data.email,
+        password: data.password,
+        callbackUrl: '/dashboard',
+        redirect: false
+      })
+      
+      console.log("Giriş sonucu:", result);
+      
+      if (result?.error) {
+        toast({ 
+          title: 'Giriş Hatası!', 
+          description: `Hata: ${result.error}`,
+          variant: 'destructive'
+        })
+      } else if (result?.url) {
+        // Başarılı girişten sonra belirtilen URL'e yönlendir
+        router.push(result.url);
+      }
+    } catch (error) {
+      console.error("Giriş sırasında beklenmeyen hata:", error);
+      toast({ 
+        title: 'Beklenmeyen Hata!', 
+        description: `Beklenmeyen bir hata oluştu: ${error}`,
+        variant: 'destructive'
+      })
+    } finally {
+      setIsLoading(false)
     }
-    // Eğer hata yoksa, useEffect yönlendirmeyi yapacak
   }
 
   return (

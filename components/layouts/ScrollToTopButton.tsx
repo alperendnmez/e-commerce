@@ -33,7 +33,7 @@ export default function ScrollToTopButton() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  const MotionButton = motion(Button)
+  const MotionButton = motion.create(Button)
 
   return (
     <MotionButton

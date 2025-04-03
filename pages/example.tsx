@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import Image from 'next/image'
 
 // Fake data to simulate backend
 const fakeData = {
@@ -127,10 +128,12 @@ const ExamplePage = () => {
           <p>Fiyat: {currentCombination.price} TL</p>
           <div className='mt-2 grid grid-cols-1 gap-4 sm:grid-cols-2'>
             {currentCombination.imageUrls.map((url: string, idx: number) => (
-              <img
+              <Image
                 key={idx}
                 src={url}
                 alt={`Combination Image ${idx}`}
+                width={200}
+                height={300}
                 className='h-40 w-40 rounded object-cover shadow'
               />
             ))}

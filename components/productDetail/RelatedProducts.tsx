@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import {
   Carousel,
@@ -14,129 +14,154 @@ import {
   TooltipTrigger
 } from '@/components/ui/tooltip'
 import { Eye, Heart } from 'lucide-react'
-import { Button } from '../ui/button'
-import { Badge } from '../ui/badge'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { RelatedData } from '@/lib/types'
+import Link from 'next/link'
+import axios from 'axios'
+import { toast } from 'react-hot-toast'
 
-export default function RelatedProducts({
-  relatedData
-}: {
-  relatedData: RelatedData
-}) {
+interface RelatedProductsProps {
+  relatedData?: RelatedData;
+  productId?: number;
+  categoryId?: number;
+}
+
+export default function RelatedProducts({ 
+  relatedData: initialRelatedData,
+  productId,
+  categoryId
+}: RelatedProductsProps) {
+  const [relatedData, setRelatedData] = useState<RelatedData | undefined>(initialRelatedData);
+  const [loading, setLoading] = useState(false);
+  
+  useEffect(() => {
+    // Eğer bağımsız bir istekle ilgili ürünleri fetch etmemiz gerekiyorsa
+    if ((productId || categoryId) && !initialRelatedData) {
+      fetchRelatedProducts();
+    }
+  }, [productId, categoryId, initialRelatedData]);
+  
+  const fetchRelatedProducts = async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (productId) params.append('productId', productId.toString());
+      if (categoryId) params.append('categoryId', categoryId.toString());
+      
+      const response = await axios.get(`/api/products/related?${params.toString()}`);
+      setRelatedData(response.data);
+    } catch (error) {
+      console.error('İlgili ürünler alınırken hata:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  // Favorilere ekle
+  const addToFavorites = (productId: number | undefined) => {
+    toast.success('Ürün favorilere eklendi');
+  };
+  
+  if (loading) {
+    return <div className="text-center py-10">Benzer ürünler yükleniyor...</div>;
+  }
+  
+  if (!relatedData || !relatedData.relateds || relatedData.relateds.length === 0) {
+    return null; // İlgili ürün yoksa bileşeni gösterme
+  }
+
   return (
-    <>
-      <div className='my-10 grid w-full grid-cols-2'>
-        <h3 className='text-3xl font-medium'>{relatedData.title}</h3>
-        <div className='flex justify-end'>
-          <Button
-            variant='link'
-            className='p-0 text-foreground hover:no-underline'
-          >
-            <span className='border-b border-b-primary '>Hepsini İncele</span>
-          </Button>
-        </div>
-      </div>
+    <div className='my-10 w-full px-6'>
+      <h3 className='text-2xl font-medium mb-6'>{relatedData.title}</h3>
       <Carousel
         opts={{
           align: 'start'
         }}
-        className=''
       >
-        <CarouselContent className='-ml-8'>
-          {relatedData.relateds.map((related, index) => (
+        <CarouselContent className='-ml-4'>
+          {relatedData.relateds.map((product) => (
             <CarouselItem
-              key={index}
-              className='pl-8 md:basis-1/2 lg:basis-1/4'
+              key={product.id}
+              className='pl-4 md:basis-1/2 lg:basis-1/4'
             >
-              <div className=''>
-                <Card className='rounded-none !border-none !shadow-none'>
-                  <CardContent
-                    className='flex h-[25rem] flex-col justify-between p-0'
-                    style={{
-                      backgroundImage: `url(${related.img.src})`,
-                      backgroundPosition: 'center',
-                      backgroundSize: 'cover'
-                    }}
-                  >
-                    <div className='flex justify-between'>
-                      <div className='flex flex-col gap-1 pl-3 pt-3'>
-                        {related.isHot && (
-                          <Badge
-                            variant={'outline'}
-                            className='w-max bg-background text-sm font-light'
-                          >
-                            Yeni
-                          </Badge>
-                        )}
-                        {related.discountPrecent && (
-                          <Badge
-                            variant={'outline'}
-                            className='w-max bg-background text-sm font-medium text-destructive'
-                          >
-                            <span>{related.discountPrecent}%</span>
-                          </Badge>
-                        )}
-                      </div>
-                      <div className='flex flex-col gap-2 pr-3 pt-3'>
+              <div>
+                <Card className='rounded-md shadow-sm border-gray-100'>
+                  <Link href={`/urunler/${product.slug}`}>
+                    <CardContent
+                      className='flex h-[240px] flex-col justify-between p-0 relative'
+                      style={{
+                        backgroundImage: `url(${product.img?.src || '/default-image.jpg'})`,
+                        backgroundPosition: 'center',
+                        backgroundSize: 'cover'
+                      }}
+                    >
+                      <div className='absolute top-2 right-2'>
                         <TooltipProvider>
                           <Tooltip>
                             <TooltipTrigger asChild>
-                              <Heart
-                                size={21}
-                                strokeWidth={1.5}
-                                className='cursor-pointer hover:text-primary'
-                              />
+                              <Button variant="ghost" size="icon" className="bg-white/80 rounded-full" onClick={(e) => {
+                                e.preventDefault();
+                                addToFavorites(product.id);
+                              }}>
+                                <Heart
+                                  size={18}
+                                  className='text-gray-700 hover:text-red-500'
+                                />
+                              </Button>
                             </TooltipTrigger>
-                            <TooltipContent side='left' className=''>
-                              <p>İstek listesine ekle</p>
-                            </TooltipContent>
-                          </Tooltip>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Eye
-                                size={22}
-                                strokeWidth={1.5}
-                                className='cursor-pointer hover:text-primary'
-                              />
-                            </TooltipTrigger>
-                            <TooltipContent side='left' className=''>
-                              <p>Detay</p>
+                            <TooltipContent side='left'>
+                              <p>Favorilere Ekle</p>
                             </TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
                       </div>
+                      
+                      {product.discountPrecent && (
+                        <div className='absolute top-2 left-2'>
+                          <Badge variant="destructive" className='rounded-md'>
+                            {product.discountPrecent}% İndirim
+                          </Badge>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Link>
+                  <div className='p-3'>
+                    <Link href={`/urunler/${product.slug}`} className="hover:text-primary">
+                      <h4 className='font-medium text-gray-800 line-clamp-1 mb-1'>
+                        {product.title}
+                      </h4>
+                    </Link>
+                    <div className='flex gap-2 items-center mb-2'>
+                      {product.discountedPrice ? (
+                        <>
+                          <span className='text-sm text-gray-400 line-through'>
+                            {product.price}
+                          </span>
+                          <span className='text-base font-medium text-red-600'>
+                            {product.discountedPrice}
+                          </span>
+                        </>
+                      ) : (
+                        <span className='text-base font-medium text-gray-800'>
+                          {product.price}
+                        </span>
+                      )}
                     </div>
-                    <Button className='mx-3 mb-3 bg-background py-6 text-foreground  !shadow-none hover:text-primary-foreground'>
-                      Sepete Ekle
-                    </Button>
-                  </CardContent>
+                    <Link href={`/urunler/${product.slug}`}>
+                      <Button variant="outline" className="w-full">
+                        İncele
+                      </Button>
+                    </Link>
+                  </div>
                 </Card>
-                <div className='flex flex-col gap-1 py-2'>
-                  <p className='font-semibold text-foreground'>
-                    {related.title}
-                  </p>
-                  {related.discountedPrice && related.discountPrecent ? (
-                    <div className='flex gap-2 text-lg'>
-                      <p className='text-lg text-muted-foreground/70 line-through'>
-                        {related.price} ₺
-                      </p>
-                      <p className='text-lg text-muted-foreground'>
-                        {related.discountedPrice} ₺
-                      </p>
-                    </div>
-                  ) : (
-                    <p className='text-lg text-muted-foreground'>
-                      {related.price} ₺
-                    </p>
-                  )}
-                </div>
               </div>
             </CarouselItem>
           ))}
         </CarouselContent>
-        <CarouselPrevious variant={'ghost'} className='-left-8' />
-        <CarouselNext variant={'ghost'} className='-right-8' />
+        <CarouselPrevious className='left-0 border border-gray-200' />
+        <CarouselNext className='right-0 border border-gray-200' />
       </Carousel>
-    </>
+    </div>
   )
 }

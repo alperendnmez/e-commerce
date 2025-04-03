@@ -1,84 +1,72 @@
-// pages/api/brands/[slug].ts
-import { NextApiRequest, NextApiResponse } from 'next';
+import type { NextApiRequest, NextApiResponse } from 'next';
 import { PrismaClient } from '@prisma/client';
-import { withAdmin } from '@/lib/middleware';
-import { withErrorHandler } from '@/lib/errorHandler';
-import { slugify } from '@/lib/slugify';
 
 const prisma = new PrismaClient();
 
-const handler = async (req: NextApiRequest, res: NextApiResponse) => {
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
   const { slug } = req.query;
-
-  if (typeof slug !== 'string') {
-    return res.status(400).json({ error: 'Geçersiz slug' });
+  
+  if (!slug || Array.isArray(slug)) {
+    return res.status(400).json({ error: 'Geçersiz marka slug parametresi' });
   }
 
   switch (req.method) {
     case 'GET':
       try {
+        console.log(`GET /api/brands/${slug} isteği alındı`);
+        
+        // Markayı getir
         const brand = await prisma.brand.findUnique({
           where: { slug },
-          include: { products: true },
+          include: {
+            _count: {
+              select: {
+                products: true
+              }
+            }
+          }
         });
-
+        
         if (!brand) {
           return res.status(404).json({ error: 'Marka bulunamadı' });
         }
-
-        return res.status(200).json(brand);
+        
+        // Sadece aktif olmayan markaları sadece admin kullanıcılarına göster
+        if (!brand.isActive) {
+          // NOT: Gerçek projede burada yetkilendirme kontrolü yapılmalı
+          // Örnek: if (!session || session.user.role !== 'ADMIN') {
+          //   return res.status(404).json({ error: 'Marka bulunamadı' });
+          // }
+        }
+        
+        // Hassas verileri temizle
+        const cleanedBrand = {
+          ...brand,
+          productCount: brand._count.products,
+          _count: undefined
+        };
+        
+        console.log(`${slug} markası bulundu`);
+        return res.status(200).json(cleanedBrand);
       } catch (error) {
         console.error(`GET /api/brands/${slug} hatası:`, error);
         return res.status(500).json({ error: 'Sunucu hatası' });
       }
-
+      
     case 'PUT':
-      try {
-        const { name, seoTitle, seoDescription } = req.body;
-
-        if (!name) {
-          return res.status(400).json({ error: 'Marka adı gerekli' });
-        }
-
-        // Eğer istenirse slug'ı güncelleyebilirsiniz
-        const updatedBrand = await prisma.brand.update({
-          where: { slug },
-          data: {
-            name,
-            seoTitle,
-            seoDescription,
-            slug: slugify(name), // Slug'ı otomatik olarak güncelle
-          },
-        });
-
-        return res.status(200).json(updatedBrand);
-      } catch (error: any) {
-        if (error.code === 'P2025') {
-          return res.status(404).json({ error: 'Marka bulunamadı' });
-        }
-        console.error(`PUT /api/brands/${slug} hatası:`, error);
-        return res.status(500).json({ error: 'Sunucu hatası' });
-      }
-
+    case 'PATCH':
+      // Bu kısmı dashboard için ayırıyoruz
+      return res.status(403).json({ error: 'Bu endpoint üzerinden güncelleme yapamazsınız' });
+      
     case 'DELETE':
-      try {
-        await prisma.brand.delete({
-          where: { slug },
-        });
-
-        return res.status(200).json({ message: 'Marka başarıyla silindi' });
-      } catch (error: any) {
-        if (error.code === 'P2025') {
-          return res.status(404).json({ error: 'Marka bulunamadı' });
-        }
-        console.error(`DELETE /api/brands/${slug} hatası:`, error);
-        return res.status(500).json({ error: 'Sunucu hatası' });
-      }
-
+      // Bu kısmı dashboard için ayırıyoruz
+      return res.status(403).json({ error: 'Bu endpoint üzerinden silme işlemi yapamazsınız' });
+      
     default:
-      res.setHeader('Allow', ['GET', 'PUT', 'DELETE']);
-      return res.status(405).json({ error: `Yöntem ${req.method} izin verilmez` });
+      res.setHeader('Allow', ['GET']);
+      return res.status(405).json({ error: `Method ${req.method} Not Allowed` });
   }
-};
-
-export default withAdmin(withErrorHandler(handler));
+} 

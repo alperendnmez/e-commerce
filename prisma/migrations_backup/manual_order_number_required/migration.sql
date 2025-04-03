@@ -1,0 +1,1 @@
+-- AlterTable ALTER TABLE "Order" ALTER COLUMN "orderNumber" SET NOT NULL;

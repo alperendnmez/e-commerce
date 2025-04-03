@@ -1,0 +1,1987 @@
+// pages/dashboard/markalar/index.tsx
+import React, { ReactElement, useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import Link from 'next/link'
+import axios from 'axios'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+import { 
+  Plus, 
+  Pencil, 
+  Trash2, 
+  Eye, 
+  Check, 
+  X, 
+  Search,
+  Image as ImageIcon,
+  Download,
+  Filter,
+  LayoutGrid,
+  List,
+  MoreHorizontal,
+  Upload,
+  ArrowLeft,
+  Grid,
+  CheckCircle2,
+  AlertCircle,
+  Star,
+  Loader2,
+  ArrowUpDown,
+  ChevronUp,
+  ChevronDown,
+  FileJson,
+  FileSpreadsheet,
+  LayoutList,
+  Archive
+} from 'lucide-react'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form'
+import { Textarea } from '@/components/ui/textarea'
+import { Checkbox } from '@/components/ui/checkbox'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import { useToast } from '@/components/ui/use-toast'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import DashboardLayout from '@/components/layouts/DashboardLayout'
+import Image from 'next/image'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem
+} from '@/components/ui/dropdown-menu'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+  SheetFooter,
+  SheetClose
+} from "@/components/ui/sheet"
+import { Calendar } from "@/components/ui/calendar"
+import { format } from "date-fns"
+import { tr } from "date-fns/locale"
+import { CalendarIcon, FilterIcon, SlidersHorizontal } from "lucide-react"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Label } from "@/components/ui/label"
+
+// Marka şeması
+const brandSchema = z.object({
+  name: z.string().min(2, {
+    message: 'Marka adı en az 2 karakter olmalıdır.',
+  }),
+  description: z.string().optional(),
+  content: z.string().optional(),
+  logoUrl: z.string().optional(),
+  bannerUrl: z.string().optional(),
+  coverImageUrl: z.string().optional(),
+  isActive: z.boolean().default(true),
+  displayOrder: z.coerce.number().int().optional().default(0),
+  isFeatured: z.boolean().default(false),
+  isArchived: z.boolean().default(false),
+  archivedAt: z.string().optional(),
+  seoTitle: z.string().optional(),
+  seoDescription: z.string().optional(),
+  seoKeywords: z.string().optional(),
+  showInHeader: z.boolean().default(true),
+  showInFooter: z.boolean().default(false),
+  showInSidebar: z.boolean().default(true),
+  productListingType: z.string().optional(),
+  productsPerPage: z.coerce.number().int().optional().default(12),
+  defaultSortOrder: z.string().optional(),
+})
+
+type BrandFormValues = z.infer<typeof brandSchema>
+
+// Marka tipi
+interface Brand {
+  id: number
+  name: string
+  description: string | null
+  content: string | null
+  slug: string
+  logoUrl: string | null
+  bannerUrl: string | null
+  coverImageUrl: string | null
+  isActive: boolean
+  displayOrder: number
+  isFeatured: boolean
+  isArchived: boolean
+  archivedAt: string | null
+  seoTitle: string | null
+  seoDescription: string | null
+  seoKeywords: string | null
+  showInHeader: boolean
+  showInFooter: boolean
+  showInSidebar: boolean
+  productListingType: string | null
+  productsPerPage: number
+  defaultSortOrder: string | null
+  createdAt?: string
+  updatedAt?: string
+  productCount?: number
+}
+
+export default function BrandsPage() {
+  const { toast } = useToast()
+  
+  const [brands, setBrands] = useState<Brand[]>([])
+  const [loading, setLoading] = useState(true)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [viewMode, setViewMode] = useState<'grid' | 'table'>('table')
+  const [showInactive, setShowInactive] = useState<boolean>(false)
+  const [selectedBrands, setSelectedBrands] = useState<number[]>([])
+  const [logoFile, setLogoFile] = useState<File | null>(null)
+  const [logoPreview, setLogoPreview] = useState<string | null>(null)
+  const [uploadProgress, setUploadProgress] = useState<number>(0)
+  const [isUploading, setIsUploading] = useState<boolean>(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [filters, setFilters] = useState({
+    isActive: 'all', // 'all', 'active', 'inactive'
+    isFeatured: 'all', // 'all', 'featured', 'notFeatured'
+    isArchived: 'all', // 'all', 'archived', 'notArchived'
+    sortBy: 'displayOrder', // 'displayOrder', 'name', 'createdAt'
+    sortOrder: 'asc', // 'asc', 'desc'
+    dateRange: 'all', // 'all', 'today', 'thisWeek', 'thisMonth', 'thisYear'
+  })
+  const [showFilters, setShowFilters] = useState(false)
+  const [isFilterActive, setIsFilterActive] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [importDialogOpen, setImportDialogOpen] = useState(false)
+  const [importFile, setImportFile] = useState<File | null>(null)
+  const [importLoading, setImportLoading] = useState(false)
+  const [importResults, setImportResults] = useState<any>(null)
+  const importFileInputRef = useRef<HTMLInputElement>(null)
+  
+  // Form tanımla
+  const form = useForm<BrandFormValues>({
+    resolver: zodResolver(brandSchema),
+    defaultValues: {
+      name: '',
+      description: '',
+      content: '',
+      logoUrl: '',
+      isActive: true,
+      displayOrder: 0,
+      isFeatured: false,
+      isArchived: false,
+      archivedAt: null,
+      seoTitle: '',
+      seoDescription: '',
+      seoKeywords: '',
+    },
+  })
+  
+  // Markaları getir
+  const fetchBrands = async () => {
+    setLoading(true)
+    try {
+      // Filtreleme parametrelerini oluştur
+      const params = new URLSearchParams()
+      
+      if (searchTerm) {
+        params.append('search', searchTerm)
+      }
+      
+      if (filters.isFeatured) {
+        params.append('isFeatured', filters.isFeatured)
+      }
+      
+      if (filters.isActive) {
+        params.append('isActive', filters.isActive)
+      }
+      
+      if (filters.createdAfter) {
+        params.append('createdAfter', filters.createdAfter.toISOString())
+      }
+      
+      if (filters.createdBefore) {
+        params.append('createdBefore', filters.createdBefore.toISOString())
+      }
+      
+      if (filters.minProducts) {
+        params.append('minProducts', filters.minProducts)
+      }
+      
+      if (filters.maxProducts) {
+        params.append('maxProducts', filters.maxProducts)
+      }
+      
+      params.append('sortBy', filters.sortBy)
+      params.append('sortOrder', filters.sortOrder)
+      
+      const { data } = await axios.get(`/api/brands?${params.toString()}`)
+      setBrands(data)
+      setError(null)
+    } catch (err: any) {
+      console.error('Markalar yüklenirken hata:', err)
+      setError(err.response?.data?.error || 'Markalar yüklenirken bir hata oluştu')
+      toast({
+        variant: 'destructive',
+        title: 'Hata',
+        description: err.response?.data?.error || 'Markalar yüklenirken bir hata oluştu'
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+  
+  // Filtrelerin aktif olup olmadığını kontrol et
+  useEffect(() => {
+    const isActive = 
+      !!filters.isFeatured || 
+      !!filters.isActive || 
+      !!filters.createdAfter || 
+      !!filters.createdBefore || 
+      !!filters.minProducts || 
+      !!filters.maxProducts ||
+      filters.sortBy !== 'name' ||
+      filters.sortOrder !== 'asc'
+    
+    setIsFilterActive(isActive)
+  }, [filters])
+  
+  // Sayfa yüklendiğinde ve filtreler değiştiğinde markaları getir
+  useEffect(() => {
+    fetchBrands()
+  }, [filters, searchTerm])
+  
+  // Filtreleri sıfırla
+  const resetFilters = () => {
+    setFilters({
+      isActive: 'all',
+      isFeatured: 'all',
+      isArchived: 'all',
+      sortBy: 'displayOrder',
+      sortOrder: 'asc',
+      dateRange: 'all'
+    })
+    setSearchTerm('')
+    setIsFilterActive(false)
+  }
+  
+  // Markaları sıralama işlevi
+  const sortBrands = (brands: Brand[]) => {
+    return [...brands].sort((a, b) => {
+      // Önce öne çıkanları göster
+      if (a.isFeatured && !b.isFeatured) return -1;
+      if (!a.isFeatured && b.isFeatured) return 1;
+      
+      // Sonra sıralama değerine göre sırala
+      return a.displayOrder - b.displayOrder;
+    });
+  };
+  
+  // Markaları alfabetik olarak gruplandır
+  const groupedBrands = useMemo(() => {
+    const groups: Record<string, Brand[]> = {};
+    
+    brands.forEach(brand => {
+      const firstLetter = brand.name.charAt(0).toUpperCase();
+      if (!groups[firstLetter]) {
+        groups[firstLetter] = [];
+      }
+      groups[firstLetter].push(brand);
+    });
+    
+    // Grupları alfabetik olarak sırala
+    return Object.keys(groups).sort().map(letter => ({
+      letter,
+      brands: groups[letter].sort((a, b) => a.name.localeCompare(b.name))
+    }));
+  }, [brands]);
+  
+  // Logo dosyası değiştiğinde önizleme oluştur
+  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setLogoFile(file)
+    
+    // Dosya önizlemesi oluştur
+    const reader = new FileReader()
+    reader.onload = () => {
+      setLogoPreview(reader.result as string)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  // Logo yükleme işlemi
+  const handleLogoUpload = async () => {
+    if (!logoFile) return
+
+    setIsUploading(true)
+    setUploadProgress(0)
+
+    try {
+      // FormData oluştur
+      const formData = new FormData()
+      formData.append('file', logoFile)
+      
+      // Dosyayı yükle
+      const response = await axios.post('/api/upload/logo', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        },
+        onUploadProgress: (progressEvent) => {
+          const progress = progressEvent.total 
+            ? Math.round((progressEvent.loaded * 100) / progressEvent.total)
+            : 0
+          setUploadProgress(progress)
+        }
+      })
+
+      // Logo URL'sini form'a set et
+      form.setValue('logoUrl', response.data.url)
+      
+      toast({
+        title: 'Başarılı',
+        description: 'Logo başarıyla yüklendi',
+      })
+    } catch (err: any) {
+      console.error('Logo yüklenirken hata:', err)
+      toast({
+        variant: 'destructive',
+        title: 'Hata',
+        description: err.response?.data?.error || 'Logo yüklenirken bir hata oluştu'
+      })
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
+  // Logo önizlemesini temizle
+  const clearLogoPreview = () => {
+    setLogoFile(null)
+    setLogoPreview(null)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+  
+  // Form gönderme işlemi
+  const onSubmit = async (values: BrandFormValues) => {
+    try {
+      // Gönderilecek verileri konsola yazdır
+      console.log('Gönderilecek veriler:', {
+        ...values,
+        description: values.description || null,
+        content: values.content || null,
+        logoUrl: values.logoUrl || null,
+        bannerUrl: values.bannerUrl || null,
+        coverImageUrl: values.coverImageUrl || null,
+        displayOrder: Number(values.displayOrder) || 0,
+        isFeatured: Boolean(values.isFeatured),
+        isArchived: Boolean(values.isArchived),
+        archivedAt: values.archivedAt || null,
+        seoTitle: values.seoTitle || null,
+        seoDescription: values.seoDescription || null,
+        seoKeywords: values.seoKeywords || null,
+        showInHeader: Boolean(values.showInHeader),
+        showInFooter: Boolean(values.showInFooter),
+        showInSidebar: Boolean(values.showInSidebar),
+        productListingType: values.productListingType || null,
+        productsPerPage: Number(values.productsPerPage) || 12,
+        defaultSortOrder: values.defaultSortOrder || null,
+      });
+
+      // Kaydet butonuna basıldığını göstermek için konsola yazdır
+      console.log('Kaydet butonuna basıldı, API isteği gönderiliyor...');
+
+      const response = await axios.post('/api/brands', {
+        ...values,
+        description: values.description || null,
+        content: values.content || null,
+        logoUrl: values.logoUrl || null,
+        bannerUrl: values.bannerUrl || null,
+        coverImageUrl: values.coverImageUrl || null,
+        displayOrder: Number(values.displayOrder) || 0,
+        isFeatured: Boolean(values.isFeatured),
+        isArchived: Boolean(values.isArchived),
+        archivedAt: values.archivedAt || null,
+        seoTitle: values.seoTitle || null,
+        seoDescription: values.seoDescription || null,
+        seoKeywords: values.seoKeywords || null,
+        showInHeader: Boolean(values.showInHeader),
+        showInFooter: Boolean(values.showInFooter),
+        showInSidebar: Boolean(values.showInSidebar),
+        productListingType: values.productListingType || null,
+        productsPerPage: Number(values.productsPerPage) || 12,
+        defaultSortOrder: values.defaultSortOrder || null,
+      });
+      
+      // Yanıtı konsola yazdır
+      console.log('API yanıtı:', response.data);
+      
+      toast({
+        title: 'Başarılı',
+        description: 'Yeni marka eklendi',
+      });
+      
+      // Markaları yeniden yükle
+      fetchBrands();
+      
+      // Formu sıfırla ve dialogu kapat
+      form.reset();
+      setIsDialogOpen(false);
+      
+      // Logo önizlemesini temizle
+      clearLogoPreview();
+    } catch (err: any) {
+      console.error('Marka eklenirken hata:', err);
+      
+      // Hata detaylarını konsola yazdır
+      if (err.response) {
+        // Sunucu yanıtı ile dönen hata
+        console.error('Hata yanıtı:', err.response.data);
+        console.error('Hata durumu:', err.response.status);
+        console.error('Hata başlıkları:', err.response.headers);
+      } else if (err.request) {
+        // İstek yapıldı ama yanıt alınamadı
+        console.error('İstek yapıldı ama yanıt alınamadı:', err.request);
+      } else {
+        // İstek oluşturulurken bir şeyler yanlış gitti
+        console.error('Hata mesajı:', err.message);
+      }
+      
+      toast({
+        title: 'Hata!',
+        description: err.response?.data?.error || err.message || 'Marka eklenirken bir hata oluştu',
+        variant: 'destructive'
+      });
+    }
+  };
+  
+  // Silme işlemi
+  const handleDelete = async (slug: string) => {
+    if (!confirm('Bu markayı silmek istediğinizden emin misiniz?')) return
+    
+    try {
+      await axios.delete(`/api/brands/${slug}`)
+      toast({ 
+        title: 'Başarılı', 
+        description: 'Marka silindi' 
+      })
+      fetchBrands()
+    } catch (err: any) {
+      toast({
+        title: 'Hata!',
+        description: err.response?.data?.error || 'Marka silinirken hata oluştu',
+        variant: 'destructive'
+      })
+    }
+  }
+
+  // Seçilen markaları yönetme
+  const toggleSelectBrand = (id: number) => {
+    setSelectedBrands(prev => 
+      prev.includes(id) 
+        ? prev.filter(brandId => brandId !== id)
+        : [...prev, id]
+    );
+  };
+
+  const selectAllBrands = () => {
+    if (selectedBrands.length === getFilteredBrands.length) {
+      setSelectedBrands([]);
+    } else {
+      setSelectedBrands(getFilteredBrands.map(brand => brand.id));
+    }
+  };
+
+  // Toplu işlemler
+  const bulkDelete = async () => {
+    if (!selectedBrands.length) return;
+    
+    if (!confirm(`${selectedBrands.length} markayı silmek istediğinizden emin misiniz?`)) return;
+    
+    try {
+      await Promise.all(selectedBrands.map(id => {
+        const brand = brands.find(b => b.id === id);
+        if (brand) {
+          return axios.delete(`/api/brands/${brand.slug}`);
+        }
+        return Promise.resolve();
+      }));
+      
+      toast({ 
+        title: 'Başarılı', 
+        description: `${selectedBrands.length} marka başarıyla silindi` 
+      });
+      
+      setSelectedBrands([]);
+      fetchBrands();
+    } catch (err: any) {
+      toast({
+        title: 'Hata!',
+        description: 'Markalar silinirken bir hata oluştu',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  // Markaları dışa aktar
+  const exportBrands = (format: 'json' | 'csv' | 'excel') => {
+    if (!getFilteredBrands.length) {
+      toast({
+        variant: "destructive",
+        title: "Hata",
+        description: "Dışa aktarılacak marka bulunamadı."
+      });
+      return;
+    }
+    
+    // JSON formatında dışa aktarma
+    if (format === 'json') {
+      const jsonData = JSON.stringify(getFilteredBrands, null, 2);
+      const blob = new Blob([jsonData], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `markalar_${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+    
+    // CSV formatında dışa aktarma
+    else if (format === 'csv') {
+      const headers = ['ID', 'Marka Adı', 'Açıklama', 'Slug', 'Logo URL', 'Durum', 'Sıralama', 'Öne Çıkan', 'Oluşturulma Tarihi'];
+      const csvData = getFilteredBrands.map(brand => [
+        brand.id,
+        brand.name,
+        brand.description || '',
+        brand.slug,
+        brand.logoUrl || '',
+        brand.isActive ? 'Aktif' : 'Pasif',
+        brand.displayOrder,
+        brand.isFeatured ? 'Evet' : 'Hayır',
+        brand.createdAt ? new Date(brand.createdAt).toLocaleDateString('tr-TR') : ''
+      ]);
+      
+      let csvContent = headers.join(',') + '\n';
+      csvData.forEach(row => {
+        // Virgülleri ve yeni satırları temizle
+        const cleanRow = row.map(cell => {
+          const cellStr = String(cell);
+          return cellStr.includes(',') || cellStr.includes('\n') 
+            ? `"${cellStr.replace(/"/g, '""')}"` 
+            : cellStr;
+        });
+        csvContent += cleanRow.join(',') + '\n';
+      });
+      
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `markalar_${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+    
+    // Excel formatında dışa aktarma (basit CSV olarak)
+    else if (format === 'excel') {
+      const headers = ['ID', 'Marka Adı', 'Açıklama', 'Slug', 'Logo URL', 'Durum', 'Sıralama', 'Öne Çıkan', 'Oluşturulma Tarihi'];
+      const csvData = getFilteredBrands.map(brand => [
+        brand.id,
+        brand.name,
+        brand.description || '',
+        brand.slug,
+        brand.logoUrl || '',
+        brand.isActive ? 'Aktif' : 'Pasif',
+        brand.displayOrder,
+        brand.isFeatured ? 'Evet' : 'Hayır',
+        brand.createdAt ? new Date(brand.createdAt).toLocaleDateString('tr-TR') : ''
+      ]);
+      
+      let csvContent = headers.join('\t') + '\n';
+      csvData.forEach(row => {
+        // Tab karakterlerini ve yeni satırları temizle
+        const cleanRow = row.map(cell => {
+          const cellStr = String(cell);
+          return cellStr.includes('\t') || cellStr.includes('\n') 
+            ? cellStr.replace(/\t/g, ' ').replace(/\n/g, ' ') 
+            : cellStr;
+        });
+        csvContent += cleanRow.join('\t') + '\n';
+      });
+      
+      const blob = new Blob([csvContent], { type: 'application/vnd.ms-excel' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `markalar_${new Date().toISOString().split('T')[0]}.xls`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+    
+    toast({
+      title: "Başarılı",
+      description: `Markalar ${format.toUpperCase()} formatında dışa aktarıldı.`
+    });
+  };
+  
+  // İçe aktarma dosyasını seç
+  const handleImportFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      setImportFile(e.target.files[0]);
+    }
+  };
+  
+  // Markaları içe aktar
+  const importBrands = async () => {
+    if (!importFile) return;
+    
+    setImportLoading(true);
+    setImportResults(null);
+    
+    try {
+      const formData = new FormData();
+      formData.append('file', importFile);
+      
+      const response = await axios.post('/api/brands/import', formData);
+      setImportResults(response.data);
+      
+      if (response.data.success > 0) {
+        toast({
+          title: 'İçe Aktarma Başarılı',
+          description: `${response.data.success} marka başarıyla içe aktarıldı.`,
+        });
+        
+        // Markaları yeniden yükle
+        fetchBrands();
+      }
+    } catch (err: any) {
+      console.error('Markalar içe aktarılırken hata:', err);
+      toast({
+        variant: 'destructive',
+        title: 'Hata',
+        description: err.response?.data?.message || 'Markalar içe aktarılırken bir hata oluştu',
+      });
+    } finally {
+      setImportLoading(false);
+    }
+  };
+  
+  // İçe aktarma formunu sıfırla
+  const resetImportForm = () => {
+    setImportFile(null);
+    setImportResults(null);
+    if (importFileInputRef.current) {
+      importFileInputRef.current.value = '';
+    }
+  };
+  
+  // Markayı arşivleme işlemi
+  const handleArchive = async (slug: string) => {
+    if (!confirm('Bu markayı arşivlemek istediğinizden emin misiniz?')) return
+    
+    try {
+      await axios.patch(`/api/brands/${slug}`, { action: 'archive' })
+      toast({ 
+        title: 'Başarılı', 
+        description: 'Marka arşivlendi' 
+      })
+      fetchBrands()
+    } catch (err: any) {
+      toast({
+        title: 'Hata!',
+        description: err.response?.data?.message || 'Marka arşivlenirken hata oluştu',
+        variant: 'destructive'
+      })
+    }
+  }
+
+  // Markayı arşivden çıkarma işlemi
+  const handleUnarchive = async (slug: string) => {
+    try {
+      await axios.patch(`/api/brands/${slug}`, { action: 'unarchive' })
+      toast({ 
+        title: 'Başarılı', 
+        description: 'Marka arşivden çıkarıldı' 
+      })
+      fetchBrands()
+    } catch (err: any) {
+      toast({
+        title: 'Hata!',
+        description: err.response?.data?.message || 'Marka arşivden çıkarılırken hata oluştu',
+        variant: 'destructive'
+      })
+    }
+  }
+  
+  // Filtreleme ve sıralama işlemleri için brands dizisini kullan
+  const getFilteredBrands = useMemo(() => {
+    if (!brands) return [];
+    
+    return brands
+      .filter(brand => {
+        // Arama filtresi
+        const matchesSearch = searchTerm === '' || 
+          brand.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          (brand.description && brand.description.toLowerCase().includes(searchTerm.toLowerCase()));
+        
+        // Aktif/Pasif filtresi
+        const matchesActive = 
+          filters.isActive === 'all' || 
+          (filters.isActive === 'active' && brand.isActive) || 
+          (filters.isActive === 'inactive' && !brand.isActive);
+        
+        // Öne çıkan filtresi
+        const matchesFeatured = 
+          filters.isFeatured === 'all' || 
+          (filters.isFeatured === 'featured' && brand.isFeatured) || 
+          (filters.isFeatured === 'notFeatured' && !brand.isFeatured);
+        
+        // Arşiv filtresi
+        const matchesArchived = 
+          filters.isArchived === 'all' || 
+          (filters.isArchived === 'archived' && brand.isArchived) || 
+          (filters.isArchived === 'notArchived' && !brand.isArchived);
+        
+        // Tarih aralığı filtresi
+        let matchesDateRange = true;
+        if (filters.dateRange !== 'all' && brand.createdAt) {
+          const createdDate = new Date(brand.createdAt);
+          const now = new Date();
+          const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          
+          if (filters.dateRange === 'today') {
+            matchesDateRange = createdDate >= today;
+          } else if (filters.dateRange === 'thisWeek') {
+            const weekStart = new Date(today);
+            weekStart.setDate(today.getDate() - today.getDay());
+            matchesDateRange = createdDate >= weekStart;
+          } else if (filters.dateRange === 'thisMonth') {
+            const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+            matchesDateRange = createdDate >= monthStart;
+          } else if (filters.dateRange === 'thisYear') {
+            const yearStart = new Date(now.getFullYear(), 0, 1);
+            matchesDateRange = createdDate >= yearStart;
+          }
+        }
+        
+        return matchesSearch && matchesActive && matchesFeatured && matchesArchived && matchesDateRange;
+      })
+      .sort((a, b) => {
+        // Sıralama
+        if (filters.sortBy === 'name') {
+          return filters.sortOrder === 'asc' 
+            ? a.name.localeCompare(b.name) 
+            : b.name.localeCompare(a.name);
+        } else if (filters.sortBy === 'createdAt') {
+          const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return filters.sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
+        } else { // displayOrder
+          return filters.sortOrder === 'asc' 
+            ? a.displayOrder - b.displayOrder 
+            : b.displayOrder - a.displayOrder;
+        }
+      });
+  }, [brands, searchTerm, filters]);
+  
+  return (
+    <div className="p-6 bg-background">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold">Markalar</h1>
+        <div className="flex gap-2">
+          <Button variant="outline" asChild>
+            <Link href="/dashboard">
+              <ArrowLeft className="mr-2 h-4 w-4" /> Dashboard
+            </Link>
+          </Button>
+          <Button onClick={() => setIsDialogOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" /> Yeni Marka
+          </Button>
+        </div>
+      </div>
+      
+      <div className="mb-6 space-y-4">
+        <div className="flex flex-col sm:flex-row gap-4 justify-between">
+          <div className="relative w-full sm:w-96">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              type="search"
+              placeholder="Marka ara..."
+              className="w-full pl-8"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+          
+          <div className="flex gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => setShowFilters(!showFilters)}
+            >
+              <Filter className="mr-2 h-4 w-4" />
+              Filtreler
+              {showFilters ? <ChevronUp className="ml-2 h-4 w-4" /> : <ChevronDown className="ml-2 h-4 w-4" />}
+            </Button>
+            
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline">
+                  <ArrowUpDown className="mr-2 h-4 w-4" />
+                  Sırala
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuLabel>Sıralama Kriteri</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuRadioGroup 
+                  value={filters.sortBy} 
+                  onValueChange={(value) => setFilters({...filters, sortBy: value})}
+                >
+                  <DropdownMenuRadioItem value="displayOrder">Sıralama Numarası</DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="name">Marka Adı</DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="createdAt">Oluşturulma Tarihi</DropdownMenuRadioItem>
+                </DropdownMenuRadioGroup>
+                
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel>Sıralama Yönü</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuRadioGroup 
+                  value={filters.sortOrder} 
+                  onValueChange={(value) => setFilters({...filters, sortOrder: value})}
+                >
+                  <DropdownMenuRadioItem value="asc">Artan</DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="desc">Azalan</DropdownMenuRadioItem>
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline">
+                  <Download className="mr-2 h-4 w-4" />
+                  Dışa Aktar
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => exportBrands('json')}>
+                  <FileJson className="mr-2 h-4 w-4" />
+                  JSON olarak indir
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => exportBrands('csv')}>
+                  <FileSpreadsheet className="mr-2 h-4 w-4" />
+                  CSV olarak indir
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => exportBrands('excel')}>
+                  <FileSpreadsheet className="mr-2 h-4 w-4" />
+                  Excel olarak indir
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            
+            <Button variant="outline" onClick={() => setViewMode(viewMode === 'grid' ? 'table' : 'grid')}>
+              {viewMode === 'grid' ? (
+                <>
+                  <LayoutList className="mr-2 h-4 w-4" />
+                  Tablo Görünümü
+                </>
+              ) : (
+                <>
+                  <LayoutGrid className="mr-2 h-4 w-4" />
+                  Grid Görünümü
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+        
+        {showFilters && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Gelişmiş Filtreler</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="space-y-2">
+                  <Label>Durum</Label>
+                  <Select 
+                    value={filters.isActive} 
+                    onValueChange={(value) => setFilters({...filters, isActive: value})}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Durum seçin" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Tümü</SelectItem>
+                      <SelectItem value="active">Aktif</SelectItem>
+                      <SelectItem value="inactive">Pasif</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label>Öne Çıkan</Label>
+                  <Select 
+                    value={filters.isFeatured} 
+                    onValueChange={(value) => setFilters({...filters, isFeatured: value})}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Öne çıkan durumu seçin" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Tümü</SelectItem>
+                      <SelectItem value="featured">Öne Çıkanlar</SelectItem>
+                      <SelectItem value="notFeatured">Öne Çıkarılmayanlar</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label>Arşiv Durumu</Label>
+                  <Select 
+                    value={filters.isArchived} 
+                    onValueChange={(value) => setFilters({...filters, isArchived: value})}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Arşiv durumu seçin" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Tümü</SelectItem>
+                      <SelectItem value="archived">Arşivlenenler</SelectItem>
+                      <SelectItem value="notArchived">Arşivlenmeyenler</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label>Tarih Aralığı</Label>
+                  <Select 
+                    value={filters.dateRange} 
+                    onValueChange={(value) => setFilters({...filters, dateRange: value})}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Tarih aralığı seçin" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Tüm Zamanlar</SelectItem>
+                      <SelectItem value="today">Bugün</SelectItem>
+                      <SelectItem value="thisWeek">Bu Hafta</SelectItem>
+                      <SelectItem value="thisMonth">Bu Ay</SelectItem>
+                      <SelectItem value="thisYear">Bu Yıl</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </CardContent>
+            <CardFooter className="flex justify-between">
+              <Button 
+                variant="outline" 
+                onClick={() => setFilters({
+                  isActive: 'all',
+                  isFeatured: 'all',
+                  isArchived: 'all',
+                  sortBy: 'displayOrder',
+                  sortOrder: 'asc',
+                  dateRange: 'all'
+                })}
+              >
+                Filtreleri Sıfırla
+              </Button>
+              <Button onClick={() => setShowFilters(false)}>
+                Filtreleri Uygula
+              </Button>
+            </CardFooter>
+          </Card>
+        )}
+      </div>
+      
+      {/* Toplu işlem butonları */}
+      {selectedBrands.length > 0 && (
+        <div className="mb-4 p-4 bg-muted rounded-lg flex items-center justify-between">
+          <div className="flex items-center">
+            <Checkbox 
+              id="selectAll" 
+              checked={selectedBrands.length === getFilteredBrands.length && getFilteredBrands.length > 0}
+              onCheckedChange={selectAllBrands}
+              className="mr-2"
+            />
+            <Label htmlFor="selectAll" className="text-sm font-medium">
+              {selectedBrands.length} marka seçildi
+            </Label>
+          </div>
+          <div className="flex gap-2">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => setSelectedBrands([])}
+            >
+              <X className="mr-2 h-4 w-4" /> Seçimi Temizle
+            </Button>
+            <Button 
+              variant="destructive" 
+              size="sm" 
+              onClick={bulkDelete}
+            >
+              <Trash2 className="mr-2 h-4 w-4" /> Seçilenleri Sil
+            </Button>
+          </div>
+        </div>
+      )}
+      
+      {/* Marka listesi */}
+      {loading ? (
+        <div className="flex justify-center items-center h-64">
+          <p>Yükleniyor...</p>
+        </div>
+      ) : error ? (
+        <div className="flex justify-center items-center h-64">
+          <p className="text-red-500">{error}</p>
+        </div>
+      ) : brands.length === 0 ? (
+        <div className="flex flex-col justify-center items-center h-64 text-center">
+          <p className="text-muted-foreground mb-4">Hiç marka bulunamadı.</p>
+          <Button onClick={() => setIsDialogOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" /> Yeni Marka Ekle
+          </Button>
+        </div>
+      ) : viewMode === 'grid' ? (
+        // Grid görünümü
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          {getFilteredBrands.map((brand) => (
+            <Card key={brand.id} className="overflow-hidden">
+              <CardHeader className="p-4">
+                <div className="flex items-center justify-between">
+                  <Checkbox 
+                    id={`select-brand-${brand.id}`}
+                    checked={selectedBrands.includes(brand.id)}
+                    onCheckedChange={() => toggleSelectBrand(brand.id)}
+                    className="mr-2"
+                  />
+                  <CardTitle className="text-lg flex items-center justify-between">
+                    <span className="truncate">{brand.name}</span>
+                    {brand.isFeatured && (
+                      <Badge variant="secondary">Öne Çıkan</Badge>
+                    )}
+                  </CardTitle>
+                </div>
+                <CardDescription className="flex items-center gap-2">
+                  <Badge variant={brand.isActive ? "outline" : "secondary"}>
+                    {brand.isActive ? "Aktif" : "Pasif"}
+                  </Badge>
+                  {brand.productCount !== undefined && (
+                    <span className="text-xs text-muted-foreground">
+                      {brand.productCount} ürün
+                    </span>
+                  )}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-4 pt-0">
+                <div className="flex items-center justify-center h-32 bg-muted rounded-md mb-4">
+                  {!brand.logoUrl ? (
+                    <div className="flex flex-col items-center justify-center text-muted-foreground">
+                      <ImageIcon className="h-12 w-12 text-muted-foreground" />
+                      <span className="text-xs mt-2">Logo yok</span>
+                    </div>
+                  ) : brand.logoUrl.startsWith('http') ? (
+                    <Image
+                      src={brand.logoUrl}
+                      alt={brand.name}
+                      width={100}
+                      height={100}
+                      className="object-contain max-h-full"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                        e.currentTarget.parentElement!.innerHTML = `
+                          <div class="flex flex-col items-center justify-center text-muted-foreground">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-12 w-12 text-muted-foreground">
+                              <rect width="18" height="18" x="3" y="3" rx="2" ry="2"></rect>
+                              <circle cx="9" cy="9" r="2"></circle>
+                              <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"></path>
+                            </svg>
+                            <span class="text-xs mt-2">Görsel yüklenemedi</span>
+                          </div>
+                        `;
+                      }}
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center justify-center text-muted-foreground">
+                      <ImageIcon className="h-12 w-12 text-muted-foreground" />
+                      <span className="text-xs mt-2">Geçersiz URL</span>
+                    </div>
+                  )}
+                </div>
+                {brand.description && (
+                  <p className="text-sm text-muted-foreground line-clamp-2 mb-4">
+                    {brand.description}
+                  </p>
+                )}
+              </CardContent>
+              <CardFooter className="p-4 pt-0 flex justify-between">
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" asChild>
+                    <Link href={`/dashboard/markalar/${brand.slug}`}>
+                      <Eye className="mr-2 h-4 w-4" /> Görüntüle
+                    </Link>
+                  </Button>
+                  <Button variant="outline" size="sm" asChild>
+                    <Link href={`/dashboard/markalar/edit/${brand.slug}`}>
+                      <Pencil className="mr-2 h-4 w-4" /> Düzenle
+                    </Link>
+                  </Button>
+                </div>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => handleDelete(brand.slug)}
+                  className="text-red-500 hover:text-red-700"
+                >
+                  <Trash2 className="mr-2 h-4 w-4" /> Sil
+                </Button>
+              </CardFooter>
+            </Card>
+          ))}
+        </div>
+      ) : (
+        // Tablo görünümü
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-12">
+                  <Checkbox 
+                    id="selectAllTable" 
+                    checked={selectedBrands.length === getFilteredBrands.length && getFilteredBrands.length > 0}
+                    onCheckedChange={selectAllBrands}
+                  />
+                </TableHead>
+                <TableHead className="w-12">ID</TableHead>
+                <TableHead className="w-12">Logo</TableHead>
+                <TableHead>Marka Adı</TableHead>
+                <TableHead>Durum</TableHead>
+                <TableHead>Öne Çıkan</TableHead>
+                <TableHead>Ürün Sayısı</TableHead>
+                <TableHead>Oluşturulma Tarihi</TableHead>
+                <TableHead className="text-right">İşlemler</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {getFilteredBrands.map((brand) => (
+                <TableRow key={brand.id}>
+                  <TableCell>
+                    <Checkbox 
+                      id={`select-brand-table-${brand.id}`}
+                      checked={selectedBrands.includes(brand.id)}
+                      onCheckedChange={() => toggleSelectBrand(brand.id)}
+                    />
+                  </TableCell>
+                  <TableCell>{brand.id}</TableCell>
+                  <TableCell>
+                    {brand.logoUrl && brand.logoUrl.startsWith('http') ? (
+                      <div className="relative h-8 w-8 rounded-md overflow-hidden">
+                        <Image
+                          src={brand.logoUrl}
+                          alt={brand.name}
+                          fill
+                          className="object-contain"
+                          onError={(e) => {
+                            e.currentTarget.style.display = 'none';
+                          }}
+                        />
+                      </div>
+                    ) : (
+                      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-muted">
+                        <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                    )}
+                  </TableCell>
+                  <TableCell className="font-medium">{brand.name}</TableCell>
+                  <TableCell>
+                    {brand.isActive ? (
+                      <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                        <CheckCircle2 className="mr-1 h-3 w-3" /> Aktif
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+                        <AlertCircle className="mr-1 h-3 w-3" /> Pasif
+                      </Badge>
+                    )}
+                    {brand.isArchived && (
+                      <Badge variant="outline" className="ml-2 bg-yellow-50 text-yellow-700 border-yellow-200">
+                        <Archive className="mr-1 h-3 w-3" /> Arşivlenmiş
+                      </Badge>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {brand.isFeatured ? (
+                      <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                        <Star className="mr-1 h-3 w-3" /> Öne Çıkan
+                      </Badge>
+                    ) : (
+                      <span className="text-muted-foreground text-sm">-</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {brand.productCount !== undefined ? brand.productCount : '-'}
+                  </TableCell>
+                  <TableCell>
+                    {brand.createdAt ? format(new Date(brand.createdAt), 'dd.MM.yyyy', { locale: tr }) : '-'}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-2">
+                      <Button variant="outline" size="icon" asChild>
+                        <Link href={`/dashboard/markalar/${brand.slug}`}>
+                          <Eye className="h-4 w-4" />
+                        </Link>
+                      </Button>
+                      <Button variant="outline" size="icon" asChild>
+                        <Link href={`/dashboard/markalar/edit/${brand.slug}`}>
+                          <Pencil className="h-4 w-4" />
+                        </Link>
+                      </Button>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button 
+                              variant="outline" 
+                              size="icon" 
+                              onClick={() => handleDelete(brand.slug)}
+                            >
+                              <Trash2 className="h-4 w-4 text-red-500" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Markayı Sil</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+      
+      {/* İçe aktarma dialog'u */}
+      <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Markaları İçe Aktar</DialogTitle>
+            <DialogDescription>
+              CSV dosyasından markaları içe aktarın. Dosya formatı için önce markaları dışa aktararak örnek bir dosya oluşturabilirsiniz.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="importFile">CSV Dosyası</Label>
+              <Input
+                id="importFile"
+                type="file"
+                accept=".csv"
+                ref={importFileInputRef}
+                onChange={handleImportFileChange}
+                disabled={importLoading}
+              />
+              <p className="text-xs text-muted-foreground">
+                Sadece CSV formatı desteklenmektedir. Maksimum dosya boyutu: 5MB
+              </p>
+            </div>
+            
+            {importResults && (
+              <div className="rounded-md border p-4">
+                <h4 className="font-medium mb-2">İçe Aktarma Sonuçları</h4>
+                <div className="grid grid-cols-3 gap-2 mb-2">
+                  <div className="text-center">
+                    <p className="text-xs text-muted-foreground">Toplam</p>
+                    <p className="font-medium">{importResults.total}</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xs text-muted-foreground">Başarılı</p>
+                    <p className="font-medium text-green-600">{importResults.success}</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xs text-muted-foreground">Başarısız</p>
+                    <p className="font-medium text-red-600">{importResults.failed}</p>
+                  </div>
+                </div>
+                
+                {importResults.errors.length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-xs font-medium mb-1">Hatalar:</p>
+                    <div className="max-h-32 overflow-y-auto text-xs">
+                      {importResults.errors.map((error: string, index: number) => (
+                        <p key={index} className="text-red-600">{error}</p>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          
+          <DialogFooter className="flex flex-col sm:flex-row gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                resetImportForm();
+                setImportDialogOpen(false);
+              }}
+              disabled={importLoading}
+            >
+              İptal
+            </Button>
+            <Button
+              onClick={importBrands}
+              disabled={!importFile || importLoading}
+            >
+              {importLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  İçe Aktarılıyor...
+                </>
+              ) : (
+                'İçe Aktar'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Yeni marka ekleme dialog'u */}
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="sm:max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Yeni Marka Ekle</DialogTitle>
+            <DialogDescription>
+              Yeni bir marka eklemek için aşağıdaki formu doldurun.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-4">
+                <FormField
+                  control={form.control}
+                  name="name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Marka Adı*</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Marka adı girin" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                
+                <FormField
+                  control={form.control}
+                  name="description"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Açıklama</FormLabel>
+                      <FormControl>
+                        <Textarea 
+                          placeholder="Marka hakkında kısa açıklama" 
+                          className="resize-none" 
+                          {...field} 
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                
+                <FormField
+                  control={form.control}
+                  name="content"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>İçerik</FormLabel>
+                      <FormControl>
+                        <Textarea 
+                          placeholder="Marka hakkında detaylı içerik" 
+                          className="resize-none min-h-[120px]" 
+                          {...field} 
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                
+                <div className="space-y-4">
+                  <div>
+                    <FormLabel>Logo</FormLabel>
+                    <div className="mt-2 flex items-center gap-4">
+                      <div className="relative h-24 w-24 overflow-hidden rounded-md border">
+                        {logoPreview ? (
+                          <Image
+                            src={logoPreview}
+                            alt="Logo önizleme"
+                            fill
+                            className="object-contain"
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center bg-muted">
+                            <ImageIcon className="h-8 w-8 text-muted-foreground" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <Input
+                          type="file"
+                          accept="image/*"
+                          ref={fileInputRef}
+                          onChange={handleLogoChange}
+                          className="hidden"
+                          id="logo-upload"
+                        />
+                        <div className="flex gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => fileInputRef.current?.click()}
+                            disabled={isUploading}
+                          >
+                            <Upload className="mr-2 h-4 w-4" />
+                            Logo Seç
+                          </Button>
+                          {logoFile && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={handleLogoUpload}
+                              disabled={isUploading}
+                            >
+                              {isUploading ? (
+                                <>
+                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                  Yükleniyor {uploadProgress}%
+                                </>
+                              ) : (
+                                <>
+                                  <Upload className="mr-2 h-4 w-4" />
+                                  Yükle
+                                </>
+                              )}
+                            </Button>
+                          )}
+                          {logoPreview && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={clearLogoPreview}
+                              disabled={isUploading}
+                            >
+          <Form {...form}>
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                  <FormField
+                    control={form.control}
+                    name="name"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Marka Adı*</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Marka adı girin" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <FormField
+                    control={form.control}
+                    name="description"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Açıklama</FormLabel>
+                        <FormControl>
+                          <Textarea 
+                            placeholder="Marka hakkında kısa açıklama" 
+                            className="resize-none" 
+                            {...field} 
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <FormField
+                    control={form.control}
+                    name="content"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>İçerik</FormLabel>
+                        <FormControl>
+                          <Textarea 
+                            placeholder="Marka hakkında detaylı içerik" 
+                            className="resize-none min-h-[120px]" 
+                            {...field} 
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <div className="space-y-4">
+                    <div>
+                      <FormLabel>Logo</FormLabel>
+                      <div className="mt-2 flex items-center gap-4">
+                        <div className="relative h-24 w-24 overflow-hidden rounded-md border">
+                          {logoPreview ? (
+                            <Image
+                              src={logoPreview}
+                              alt="Logo önizleme"
+                              fill
+                              className="object-contain"
+                            />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center bg-muted">
+                              <ImageIcon className="h-8 w-8 text-muted-foreground" />
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex flex-col gap-2">
+                          <Input
+                            type="file"
+                            accept="image/*"
+                            ref={fileInputRef}
+                            onChange={handleLogoChange}
+                            className="hidden"
+                            id="logo-upload"
+                          />
+                          <div className="flex gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() => fileInputRef.current?.click()}
+                              disabled={isUploading}
+                            >
+                              <Upload className="mr-2 h-4 w-4" />
+                              Logo Seç
+                            </Button>
+                            {logoFile && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={handleLogoUpload}
+                                disabled={isUploading}
+                              >
+                                {isUploading ? (
+                                  <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Yükleniyor {uploadProgress}%
+                                  </>
+                                ) : (
+                                  <>
+                                    <Upload className="mr-2 h-4 w-4" />
+                                    Yükle
+                                  </>
+                                )}
+                              </Button>
+                            )}
+                            {logoPreview && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={clearLogoPreview}
+                                disabled={isUploading}
+                              >
+                                <X className="mr-2 h-4 w-4" />
+                                Temizle
+                              </Button>
+                            )}
+                          </div>
+                          <FormField
+                            control={form.control}
+                            name="logoUrl"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormControl>
+                                  <Input
+                                    placeholder="veya logo URL'si girin"
+                                    {...field}
+                                    className="w-full"
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="displayOrder"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Sıralama</FormLabel>
+                          <FormControl>
+                            <Input 
+                              type="number" 
+                              min="0"
+                              placeholder="0" 
+                              {...field}
+                              onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
+                            />
+                          </FormControl>
+                          <FormDescription>
+                            Düşük değerler önce gösterilir
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    
+                    <div className="space-y-4">
+                      <FormField
+                        control={form.control}
+                        name="isActive"
+                        render={({ field }) => (
+                          <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
+                            <FormControl>
+                              <Checkbox
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                              />
+                            </FormControl>
+                            <div className="space-y-1 leading-none">
+                              <FormLabel>Aktif</FormLabel>
+                              <FormDescription>
+                                Bu marka aktif olarak gösterilsin mi?
+                              </FormDescription>
+                            </div>
+                          </FormItem>
+                        )}
+                      />
+                      
+                      <FormField
+                        control={form.control}
+                        name="isFeatured"
+                        render={({ field }) => (
+                          <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
+                            <FormControl>
+                              <Checkbox
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                              />
+                            </FormControl>
+                            <div className="space-y-1 leading-none">
+                              <FormLabel>Öne Çıkan</FormLabel>
+                              <FormDescription>
+                                Bu marka öne çıkarılsın mı?
+                              </FormDescription>
+                            </div>
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-medium">SEO Bilgileri</h3>
+                    
+                    <FormField
+                      control={form.control}
+                      name="seoTitle"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>SEO Başlığı</FormLabel>
+                          <FormControl>
+                            <Input placeholder="SEO başlığı" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    
+                    <FormField
+                      control={form.control}
+                      name="seoDescription"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>SEO Açıklaması</FormLabel>
+                          <FormControl>
+                            <Textarea 
+                              placeholder="SEO açıklaması" 
+                              className="resize-none" 
+                              {...field} 
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    
+                    <FormField
+                      control={form.control}
+                      name="seoKeywords"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>SEO Anahtar Kelimeleri</FormLabel>
+                          <FormControl>
+                            <Input placeholder="Anahtar kelimeler (virgülle ayırın)" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-medium">Görünürlük Ayarları</h3>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <FormField
+                        control={form.control}
+                        name="showInHeader"
+                        render={({ field }) => (
+                          <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
+                            <FormControl>
+                              <Checkbox
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                              />
+                            </FormControl>
+                            <div className="space-y-1 leading-none">
+                              <FormLabel>Header'da Göster</FormLabel>
+                              <FormDescription>
+                                Bu marka header menüsünde gösterilsin mi?
+                              </FormDescription>
+                            </div>
+                          </FormItem>
+                        )}
+                      />
+                      
+                      <FormField
+                        control={form.control}
+                        name="showInFooter"
+                        render={({ field }) => (
+                          <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
+                            <FormControl>
+                              <Checkbox
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                              />
+                            </FormControl>
+                            <div className="space-y-1 leading-none">
+                              <FormLabel>Footer'da Göster</FormLabel>
+                              <FormDescription>
+                                Bu marka footer alanında gösterilsin mi?
+                              </FormDescription>
+                            </div>
+                          </FormItem>
+                        )}
+                      />
+                      
+                      <FormField
+                        control={form.control}
+                        name="showInSidebar"
+                        render={({ field }) => (
+                          <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
+                            <FormControl>
+                              <Checkbox
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                              />
+                            </FormControl>
+                            <div className="space-y-1 leading-none">
+                              <FormLabel>Sidebar'da Göster</FormLabel>
+                              <FormDescription>
+                                Bu marka yan menüde gösterilsin mi?
+                              </FormDescription>
+                            </div>
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <FormField
+                        control={form.control}
+                        name="productListingType"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Ürün Listeleme Tipi</FormLabel>
+                            <Select 
+                              onValueChange={field.onChange} 
+                              defaultValue={field.value}
+                            >
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Listeleme tipi seçin" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="grid">Grid</SelectItem>
+                                <SelectItem value="list">Liste</SelectItem>
+                                <SelectItem value="compact">Kompakt</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      
+                      <FormField
+                        control={form.control}
+                        name="productsPerPage"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Sayfa Başına Ürün</FormLabel>
+                            <FormControl>
+                              <Input 
+                                type="number" 
+                                min="4"
+                                max="100"
+                                placeholder="12" 
+                                {...field}
+                                onChange={(e) => field.onChange(parseInt(e.target.value) || 12)}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      
+                      <FormField
+                        control={form.control}
+                        name="defaultSortOrder"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Varsayılan Sıralama</FormLabel>
+                            <Select 
+                              onValueChange={field.onChange} 
+                              defaultValue={field.value}
+                            >
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Sıralama seçin" />
+                                </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  <SelectItem value="name_asc">İsim (A-Z)</SelectItem>
+                                  <SelectItem value="name_desc">İsim (Z-A)</SelectItem>
+                                  <SelectItem value="price_asc">Fiyat (Düşükten Yükseğe)</SelectItem>
+                                  <SelectItem value="price_desc">Fiyat (Yüksekten Düşüğe)</SelectItem>
+                                  <SelectItem value="newest">En Yeniler</SelectItem>
+                                  <SelectItem value="popular">En Popüler</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    form.reset();
+                    clearLogoPreview();
+                    setIsDialogOpen(false);
+                  }}
+                >
+                  İptal
+                </Button>
+                <Button 
+                  type="button" 
+                  disabled={isUploading}
+                  onClick={() => {
+                    console.log('Kaydet butonuna tıklandı');
+                    const values = form.getValues();
+                    onSubmit(values);
+                  }}
+                >
+                  {isUploading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Yükleniyor...
+                    </>
+                  ) : (
+                    'Kaydet'
+                  )}
+                </Button>
+              </DialogFooter>
+            </div>
+          </Form>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+BrandsPage.getLayout = function getLayout(page: ReactElement) {
+  return <DashboardLayout>{page}</DashboardLayout>
+}

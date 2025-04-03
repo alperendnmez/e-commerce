@@ -49,13 +49,47 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
           data: { quantity: existingCartItem.quantity + quantity },
         });
       } else {
+        let price = 0;
+        
+        if (variantId) {
+          const variant = await prisma.productVariant.findUnique({ 
+            where: { id: variantId } 
+          });
+          
+          if (!variant) {
+            return res.status(404).json({ error: 'Variant not found' });
+          }
+          
+          price = variant.price;
+        } else {
+          const product = await prisma.product.findUnique({
+            where: { id: productId }
+          });
+          
+          if (!product) {
+            return res.status(404).json({ error: 'Product not found' });
+          }
+          
+          if (product.basePrice === null || product.basePrice === 0) {
+            const variants = await prisma.productVariant.findMany({
+              where: { productId }
+            });
+            
+            price = variants.length > 0
+              ? Math.min(...variants.map(v => v.price))
+              : 0;
+          } else {
+            price = product.basePrice;
+          }
+        }
+        
         await prisma.cartItem.create({
           data: {
             cart: { connect: { id: cart.id } },
             product: { connect: { id: productId } },
             variant: variantId ? { connect: { id: variantId } } : undefined,
             quantity: quantity,
-            price: (await prisma.variant.findUnique({ where: { id: variantId } }))?.price ||  0,
+            price: price,
           },
         });
       }

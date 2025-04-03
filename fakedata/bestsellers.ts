@@ -5,7 +5,7 @@ import img4 from '../public/fakeImages/bestsellers/4.jpg'
 import img5 from '../public/fakeImages/bestsellers/5.jpg'
 
 export const bestsellers = {
-  title: 'Çok Satanlar',
+  title: 'Dekorasyon Ürünleri',
   href: '',
   products: [
     {

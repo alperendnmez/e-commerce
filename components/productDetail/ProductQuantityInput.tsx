@@ -1,45 +1,77 @@
 import React from 'react'
-import { Input } from '@/components/ui/input'
+import { Minus, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Heart } from 'lucide-react'
 
-function ProductQuantityInput() {
-  const [quantity, setQuantity] = React.useState(1)
+interface ProductQuantityInputProps {
+  quantity: number;
+  setQuantity: (quantity: number) => void;
+  max?: number;
+  min?: number;
+}
 
-  const handleIncrease = () => {
-    setQuantity(quantity + 1)
+function ProductQuantityInput({ 
+  quantity, 
+  setQuantity, 
+  max = 100, 
+  min = 1 
+}: ProductQuantityInputProps) {
+  
+  const decreaseQuantity = () => {
+    if (quantity > min) {
+      setQuantity(quantity - 1)
+    }
   }
 
-  const handleDecrease = () => {
-    if (quantity > 1) {
-      setQuantity(quantity - 1)
+  const increaseQuantity = () => {
+    if (!max || quantity < max) {
+      setQuantity(quantity + 1)
+    }
+  }
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = parseInt(e.target.value)
+    if (!isNaN(newValue)) {
+      if (newValue < min) {
+        setQuantity(min)
+      } else if (max && newValue > max) {
+        setQuantity(max)
+      } else {
+        setQuantity(newValue)
+      }
     }
   }
 
   return (
     <div>
       <div className='mb-5 flex justify-between gap-2'>
-        <div className='relative flex-initial'>
+        <div className='flex h-14 w-max items-center justify-start overflow-hidden rounded-md border'>
           <Button
-            className='absolute left-1 top-1/2 h-6 w-6 -translate-y-1/2 transform bg-background text-center text-muted-foreground shadow-none hover:bg-transparent'
-            onClick={handleDecrease}
+            size='icon'
+            variant='ghost'
+            className='h-14 rounded-none hover:bg-gray-100'
+            onClick={decreaseQuantity}
+            disabled={quantity <= min}
           >
-            -
+            <Minus strokeWidth={1.2} />
           </Button>
           <Input
-            className='h-12 w-32 p-0 pl-6 pr-2 text-center'
             type='number'
             value={quantity}
-            onChange={e => setQuantity(parseInt(e.target.value))}
+            onChange={handleInputChange}
+            className='h-full w-14 border-none px-0 text-center focus-visible:ring-0'
           />
           <Button
-            className='absolute right-1 top-1/2 h-9 w-9 -translate-y-1/2 transform bg-background text-center text-muted-foreground shadow-none hover:bg-transparent'
-            onClick={handleIncrease}
+            size='icon'
+            variant='ghost'
+            className='h-14 rounded-none hover:bg-gray-100'
+            onClick={increaseQuantity}
+            disabled={max !== undefined && quantity >= max}
           >
-            +
+            <Plus strokeWidth={1.2} />
           </Button>
         </div>
-        <Button className='h-12 w-full flex-initial '>Sepete Ekle</Button>
         <Button className='h-12 w-16 flex-initial border border-input bg-background text-foreground !shadow-none hover:text-primary-foreground'>
           <Heart />
         </Button>

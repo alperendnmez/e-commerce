@@ -5,7 +5,7 @@ import img4 from '../public/fakeImages/featuredProducts/4.jpg'
 import img5 from '../public/fakeImages/featuredProducts/5.jpg'
 
 export const featuredProducts = {
-  title: 'Öne Çıkanlar',
+  title: 'Dekorasyon Ürünleri',
   href: '',
   products: [
     {
