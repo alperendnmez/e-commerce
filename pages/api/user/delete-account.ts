@@ -3,11 +3,16 @@ import { getServerSession } from 'next-auth/next';
 import prisma from '@/lib/prisma';
 import bcrypt from 'bcrypt';
 import { options } from '@/pages/api/auth/[...nextauth]';
-import { sendAccountDeletionEmail } from '@/lib/mail';
+import { 
+  sendAccountDeletionEmail, 
+  sendAccountDeletionRequestToAdmin,
+  sendAccountDeletionRequestToUser 
+} from '@/lib/mail';
 
 /**
  * Kullanıcı hesabını silme API'si
  * Bu API, kullanıcı hesabını ve ilişkili tüm verileri kalıcı olarak siler
+ * veya requestOnly parametresi true ise, hesap silme talebini yöneticiye iletir
  */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   // Sadece DELETE isteklerini kabul et
@@ -40,7 +45,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     
     const isOAuthUser = Array.isArray(oauthAccounts) && oauthAccounts.length > 0;
     
-    // Google hesabı değilse şifre kontrolü yap
+    // Google hesabı değilse şifre kontrolü yap (requestOnly durumunda da)
     if (!isOAuthUser && req.body.password) {
       // Şifre doğrulama
       const isPasswordValid = await bcrypt.compare(req.body.password, user.password);
@@ -50,88 +55,121 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     }
 
-    // Silmeden önce gerekli bilgileri kaydet
+    // Hesap silme talebi mi yoksa direkt silme mi kontrol et
+    const isRequestOnly = req.body.requestOnly === true;
+
+    // Kullanıcı bilgilerini kaydet
     const userInfo = {
+      id: user.id,
       email: user.email,
       name: `${user.firstName} ${user.lastName}`
     };
 
-    // Kullanıcı ve ilişkili verileri transaction ile sil
-    await prisma.$transaction(async (tx) => {
-      // İlişkili verileri sil
-      
-      // Kullanıcının sepetini ve içindeki öğeleri sil
-      const cart = await tx.cart.findUnique({
-        where: { userId: user.id }
-      });
+    if (isRequestOnly) {
+      // ===== HESAP SİLME TALEBİ =====
+      // Yöneticiye talep e-postası gönder
+      await sendAccountDeletionRequestToAdmin(
+        userInfo.email,
+        userInfo.name,
+        userInfo.id,
+        isOAuthUser,
+        new Date()
+      );
 
-      if (cart) {
-        // Önce sepet öğelerini sil
-        await tx.cartItem.deleteMany({
-          where: { cartId: cart.id }
-        });
-
-        // Sonra sepeti sil
-        await tx.cart.delete({
-          where: { id: cart.id }
-        });
-      }
-
-      // Kullanıcının adreslerini sil
-      await tx.address.deleteMany({
-        where: { userId: user.id }
-      });
-
-      // Kullanıcının favorilerini sil
-      await tx.userFavoriteProducts.deleteMany({
-        where: { userId: user.id }
-      });
-
-      // Kullanıcının bildirimlerini sil
-      await tx.notification.deleteMany({
-        where: { userId: user.id }
-      });
-
-      // Kullanıcının kuponlarını sil
-      await tx.userCoupon.deleteMany({
-        where: { userId: user.id }
-      });
-      
-      // Stok rezervasyonlarını sil
-      await tx.stockReservation.deleteMany({
-        where: { userId: user.id }
-      });
-
-      // NextAuth ile ilgili verileri raw SQL sorguları ile sil
-      await tx.$executeRaw`DELETE FROM "Session" WHERE "userId" = ${user.id}`;
-      await tx.$executeRaw`DELETE FROM "Account" WHERE "userId" = ${user.id}`;
-
-      // Son olarak kullanıcıyı sil
-      await tx.user.delete({
-        where: { id: user.id }
-      });
-    });
-
-    // Hesap silme e-postası gönder
-    try {
-      await sendAccountDeletionEmail(
+      // Kullanıcıya onay e-postası gönder
+      await sendAccountDeletionRequestToUser(
         userInfo.email,
         userInfo.name,
         new Date()
       );
-    } catch (emailError) {
-      console.error('Hesap silme e-postası gönderilirken hata oluştu:', emailError);
-      // E-posta gönderiminde hata olsa bile işleme devam et
-    }
 
-    // Kullanıcı oturumunu sonlandırmak için ilgili endpoint'e yönlendir
-    // Not: Oturum sonlandırma işlemi istemci tarafında gerçekleştirilecek
-    return res.status(200).json({ success: true, message: 'Hesabınız başarıyla silindi' });
+      return res.status(200).json({ 
+        success: true, 
+        message: 'Hesap silme talebiniz alındı',
+        requestOnly: true
+      });
+    } 
+    else {
+      // ===== DİREKT HESAP SİLME İŞLEMİ =====
+      // Kullanıcı ve ilişkili verileri transaction ile sil
+      await prisma.$transaction(async (tx) => {
+        // İlişkili verileri sil
+        
+        // Kullanıcının sepetini ve içindeki öğeleri sil
+        const cart = await tx.cart.findUnique({
+          where: { userId: user.id }
+        });
+
+        if (cart) {
+          // Önce sepet öğelerini sil
+          await tx.cartItem.deleteMany({
+            where: { cartId: cart.id }
+          });
+
+          // Sonra sepeti sil
+          await tx.cart.delete({
+            where: { id: cart.id }
+          });
+        }
+
+        // Kullanıcının adreslerini sil
+        await tx.address.deleteMany({
+          where: { userId: user.id }
+        });
+
+        // Kullanıcının favorilerini sil
+        await tx.userFavoriteProducts.deleteMany({
+          where: { userId: user.id }
+        });
+
+        // Kullanıcının bildirimlerini sil
+        await tx.notification.deleteMany({
+          where: { userId: user.id }
+        });
+
+        // Kullanıcının kuponlarını sil
+        await tx.userCoupon.deleteMany({
+          where: { userId: user.id }
+        });
+        
+        // Stok rezervasyonlarını sil
+        await tx.stockReservation.deleteMany({
+          where: { userId: user.id }
+        });
+
+        // NextAuth ile ilgili verileri raw SQL sorguları ile sil
+        await tx.$executeRaw`DELETE FROM "Session" WHERE "userId" = ${user.id}`;
+        await tx.$executeRaw`DELETE FROM "Account" WHERE "userId" = ${user.id}`;
+
+        // Son olarak kullanıcıyı sil
+        await tx.user.delete({
+          where: { id: user.id }
+        });
+      });
+
+      // Hesap silme e-postası gönder
+      try {
+        await sendAccountDeletionEmail(
+          userInfo.email,
+          userInfo.name,
+          new Date()
+        );
+      } catch (emailError) {
+        console.error('Hesap silme e-postası gönderilirken hata oluştu:', emailError);
+        // E-posta gönderiminde hata olsa bile işleme devam et
+      }
+
+      return res.status(200).json({ 
+        success: true, 
+        message: 'Hesabınız başarıyla silindi',
+        requestOnly: false
+      });
+    }
     
   } catch (error) {
     console.error('Hesap silme hatası:', error);
     return res.status(500).json({ 
-      error: 'Hesap silinirken bir hata oluştu',
+      error: 'Hesap işlemi sırasında bir hata oluştu',
       message: error instanceof Error ? error.message : 'Bilinmeyen hata'
     });
   }

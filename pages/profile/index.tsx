@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useSession } from 'next-auth/react';
+import { useSession, signOut } from 'next-auth/react';
 import { useRouter } from 'next/router';
 import axios from 'axios';
 import Link from 'next/link';
@@ -74,8 +74,21 @@ export default function ProfilePage() {
       console.log('API Profile Response:', response.data);
       console.log('Recent orders status values:', response.data.recentOrders?.map((order: any) => order.status));
       setProfile(response.data);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching user profile:', error);
+      
+      // Kullanıcı bulunamadı hatası durumunda oturumu temizle
+      if (error.response?.status === 404 && error.response?.data?.error === 'User not found') {
+        toast({
+          description: 'Oturumunuz sonlandırıldı. Lütfen tekrar giriş yapın.',
+          variant: 'destructive',
+        });
+        
+        // Oturumu kapat ve giriş sayfasına yönlendir
+        signOut({ callbackUrl: '/auth/signin' });
+        return;
+      }
+      
       toast({
         description: 'Profil bilgileri yüklenirken bir hata oluştu.',
         variant: 'destructive',

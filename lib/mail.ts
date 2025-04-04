@@ -287,4 +287,107 @@ export const sendAccountDeletionEmail = async (email: string, name: string = '',
   const text = `Merhaba${name ? ' ' + name : ''},\n\nİsteğiniz üzerine hesabınız ${formattedDate} tarihinde kalıcı olarak silinmiştir.\n\nTüm kişisel verileriniz ve hesap bilgileriniz sistemimizden kaldırılmıştır. Bu işlem geri alınamaz.\n\nEğer bu işlemi siz yapmadıysanız, lütfen derhal müşteri hizmetlerimiz ile iletişime geçin.\n\nBizi tercih ettiğiniz için teşekkür ederiz. Umarız gelecekte tekrar sizinle çalışma fırsatı buluruz.`;
 
   return sendEmail({ to: email, subject, html, text });
+};
+
+/**
+ * Hesap silme talebi e-postası - Yöneticiye bildirim
+ * @param userEmail Kullanıcının e-posta adresi
+ * @param userName Kullanıcının adı
+ * @param userId Kullanıcının ID'si
+ * @param isOAuthUser OAuth hesabı mı
+ * @param requestDate Talep tarihi
+ */
+export const sendAccountDeletionRequestToAdmin = async (
+  userEmail: string,
+  userName: string = '',
+  userId: number,
+  isOAuthUser: boolean = false,
+  requestDate: Date = new Date()
+) => {
+  // Admin e-posta adresi - .env'den al
+  const adminEmail = process.env.ADMIN_EMAIL || process.env.EMAIL_FROM || process.env.EMAIL_SERVER_USER;
+  
+  if (!adminEmail) {
+    throw new Error('Admin e-posta adresi bulunamadı. Lütfen .env dosyasında ADMIN_EMAIL, EMAIL_FROM veya EMAIL_SERVER_USER tanımlayın.');
+  }
+  
+  console.log(`Hesap silme talebi e-postası yöneticiye gönderiliyor: ${adminEmail}`);
+  
+  const formattedDate = requestDate.toLocaleDateString('tr-TR', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+  
+  const subject = `Hesap Silme Talebi - ${userName || userEmail}`;
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 5px;">
+      <h2 style="color: #333; text-align: center;">Hesap Silme Talebi</h2>
+      <p>Merhaba Yönetici,</p>
+      <p>Aşağıdaki kullanıcı hesabının silinmesi için bir talep alındı:</p>
+      
+      <div style="background-color: #f9f9f9; padding: 15px; border-radius: 4px; margin: 15px 0;">
+        <p><strong>Kullanıcı ID:</strong> ${userId}</p>
+        <p><strong>E-posta:</strong> ${userEmail}</p>
+        <p><strong>Ad Soyad:</strong> ${userName || 'Belirtilmemiş'}</p>
+        <p><strong>Hesap Türü:</strong> ${isOAuthUser ? 'Google Hesabı' : 'Normal Hesap'}</p>
+        <p><strong>Talep Tarihi:</strong> ${formattedDate}</p>
+      </div>
+      
+      <p>Bu kullanıcının hesabını ve ilişkili tüm verilerini manuel olarak silmek için lütfen admin paneline gidin.</p>
+      <p>Not: Kullanıcı bu talebin bir kopyasını da kendi e-posta adresine almıştır ve hesabının en kısa sürede silineceği konusunda bilgilendirilmiştir.</p>
+      
+      <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #e0e0e0; text-align: center; color: #666; font-size: 12px;">
+        <p>© ${new Date().getFullYear()} Furnico. Tüm hakları saklıdır.</p>
+        <p>Gönderim saati: ${new Date().toLocaleString('tr-TR')}</p>
+      </div>
+    </div>
+  `;
+
+  const text = `Hesap Silme Talebi\n\nMerhaba Yönetici,\n\nAşağıdaki kullanıcı hesabının silinmesi için bir talep alındı:\n\nKullanıcı ID: ${userId}\nE-posta: ${userEmail}\nAd Soyad: ${userName || 'Belirtilmemiş'}\nHesap Türü: ${isOAuthUser ? 'Google Hesabı' : 'Normal Hesap'}\nTalep Tarihi: ${formattedDate}\n\nBu kullanıcının hesabını ve ilişkili tüm verilerini manuel olarak silmek için lütfen admin paneline gidin.\n\nNot: Kullanıcı bu talebin bir kopyasını da kendi e-posta adresine almıştır ve hesabının en kısa sürede silineceği konusunda bilgilendirilmiştir.`;
+
+  return sendEmail({ to: adminEmail, subject, html, text });
+};
+
+/**
+ * Hesap silme talebi onay e-postası - Kullanıcıya bildirim
+ * @param email Kullanıcının e-posta adresi
+ * @param name Kullanıcının adı
+ * @param requestDate Talep tarihi
+ */
+export const sendAccountDeletionRequestToUser = async (
+  email: string,
+  name: string = '',
+  requestDate: Date = new Date()
+) => {
+  console.log(`Hesap silme talebi onay e-postası kullanıcıya gönderiliyor: ${email}`);
+  
+  const formattedDate = requestDate.toLocaleDateString('tr-TR', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+  
+  const subject = "Hesap Silme Talebiniz Alındı";
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 5px;">
+      <h2 style="color: #333; text-align: center;">Hesap Silme Talebiniz Alındı</h2>
+      <p>Merhaba${name ? ' ' + name : ''},</p>
+      <p><strong>${formattedDate}</strong> tarihinde yaptığınız hesap silme talebiniz alındı.</p>
+      <p>Talebiniz yönetici ekibimize iletildi ve en kısa sürede işleme alınacaktır. Hesabınız silindikten sonra tarafınıza bilgilendirme e-postası gönderilecektir.</p>
+      <p>Bu süreçte herhangi bir sorunuz olursa, lütfen müşteri hizmetlerimiz ile iletişime geçin.</p>
+      <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #e0e0e0; text-align: center; color: #666; font-size: 12px;">
+        <p>© ${new Date().getFullYear()} Furnico. Tüm hakları saklıdır.</p>
+        <p>Gönderim saati: ${new Date().toLocaleString('tr-TR')}</p>
+      </div>
+    </div>
+  `;
+
+  const text = `Merhaba${name ? ' ' + name : ''},\n\n${formattedDate} tarihinde yaptığınız hesap silme talebiniz alındı.\n\nTalebiniz yönetici ekibimize iletildi ve en kısa sürede işleme alınacaktır. Hesabınız silindikten sonra tarafınıza bilgilendirme e-postası gönderilecektir.\n\nBu süreçte herhangi bir sorunuz olursa, lütfen müşteri hizmetlerimiz ile iletişime geçin.`;
+
+  return sendEmail({ to: email, subject, html, text });
 }; 

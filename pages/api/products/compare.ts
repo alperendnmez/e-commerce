@@ -1,15 +1,9 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { PrismaClient } from '@prisma/client';
 import { getServerSession } from 'next-auth/next';
-import NextAuth, { NextAuthOptions } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 
 const prisma = new PrismaClient();
-
-// Auth options'ı doğrudan import etmek yerine, burada tanımlıyoruz
-const authOptions: NextAuthOptions = {
-  providers: [],
-  secret: process.env.NEXTAUTH_SECRET,
-};
 
 export default async function handler(
   req: NextApiRequest,

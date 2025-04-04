@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useSession } from 'next-auth/react';
+import { useSession, signOut } from 'next-auth/react';
 import { useRouter } from 'next/router';
 import axios from 'axios';
 import { format } from 'date-fns';
@@ -26,6 +26,10 @@ interface UserProfile {
   createdAt: string;
   isOAuthUser?: boolean;
 }
+
+// Hesap silme işlemi için kontrol değişkeni 
+// False: Admin onayı gerekli, True: Direkt silme
+const ALLOW_DIRECT_ACCOUNT_DELETION = false;
 
 export default function SettingsPage() {
   const { data: session, status, update } = useSession();
@@ -224,16 +228,57 @@ export default function SettingsPage() {
   };
 
   const handleDeleteAccount = async () => {
-    if (profile?.isOAuthUser) {
-      // Google hesabı için şifre kontrolü yapma
-      await deleteAccount();
-    } else {
-      // Normal hesaplar için şifre kontrol et
-      if (!deletePassword) {
-        setPasswordError('Hesabınızı silmek için şifrenizi girmelisiniz');
-        return;
+    if (ALLOW_DIRECT_ACCOUNT_DELETION) {
+      // Mevcut direkt silme işlemi
+      if (profile?.isOAuthUser) {
+        // Google hesabı için şifre kontrolü yapma
+        await deleteAccount();
+      } else {
+        // Normal hesaplar için şifre kontrol et
+        if (!deletePassword) {
+          setPasswordError('Hesabınızı silmek için şifrenizi girmelisiniz');
+          return;
+        }
+        await deleteAccount(deletePassword);
       }
-      await deleteAccount(deletePassword);
+    } else {
+      // Hesap silme talebi gönderme işlemi
+      await requestAccountDeletion(profile?.isOAuthUser ? undefined : deletePassword);
+    }
+  };
+
+  const requestAccountDeletion = async (password?: string) => {
+    try {
+      setIsDeleting(true);
+      setPasswordError('');
+
+      const data = password ? { password, requestOnly: true } : { requestOnly: true };
+      const response = await axios.delete('/api/user/delete-account', { data });
+      
+      // Başarı mesajını göster
+      toast({
+        description: 'Hesap silme talebiniz yöneticiye iletildi. En kısa sürede işleme alınacak ve size bilgilendirme yapılacaktır.',
+      });
+
+      // Kullanıcıyı oturumdan çıkar ve doğrudan account-deleted sayfasına yönlendir
+      signOut({ 
+        redirect: true,
+        callbackUrl: `/account-deleted?requestOnly=true` 
+      });
+      
+    } catch (error: any) {
+      console.error('Error requesting account deletion:', error);
+      
+      if (error.response?.status === 400 && error.response?.data?.error === 'Geçersiz şifre') {
+        setPasswordError('Geçersiz şifre. Lütfen doğru şifrenizi girin.');
+      } else {
+        toast({
+          description: error.response?.data?.error || 'Hesap silme talebiniz iletilirken bir hata oluştu.',
+          variant: 'destructive',
+        });
+      }
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -245,12 +290,17 @@ export default function SettingsPage() {
       const data = password ? { password } : {};
       const response = await axios.delete('/api/user/delete-account', { data });
       
-      // Kullanıcıyı oturumdan çıkar ve ana sayfaya yönlendir
-      router.push('/api/auth/signout?callbackUrl=/');
-      
+      // Başarı mesajını göster
       toast({
         description: 'Hesabınız başarıyla silindi.',
       });
+
+      // Kullanıcıyı oturumdan çıkar ve doğrudan account-deleted sayfasına yönlendir
+      signOut({ 
+        redirect: true,
+        callbackUrl: '/account-deleted'
+      });
+      
     } catch (error: any) {
       console.error('Error deleting account:', error);
       

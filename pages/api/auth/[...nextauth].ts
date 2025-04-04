@@ -1,5 +1,5 @@
 // pages/api/auth/[...nextauth].ts
-import NextAuth, { NextAuthOptions } from "next-auth";
+import NextAuth, { NextAuthOptions, Session } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import GoogleProvider from "next-auth/providers/google";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
@@ -7,6 +7,7 @@ import bcrypt from "bcrypt";
 import prisma from '@/lib/prisma';
 import { getToken } from "next-auth/jwt";
 import { sendWelcomeEmail } from '@/lib/mail';
+import { PrismaClient } from "@prisma/client";
 
 // Rate limiter
 const LOGIN_ATTEMPTS = new Map();
@@ -20,6 +21,21 @@ const log = (message: string, data?: any) => {
     console.log(message, data || '');
   }
 };
+
+// Session tipini genişlet
+interface CustomSession extends Session {
+  redirectUrl?: string;
+  user: {
+    id: number;
+    name: string;
+    email: string;
+    role: string;
+    firstName: string;
+    lastName: string;
+    emailVerified: Date | null;
+    image?: string | null;
+  }
+}
 
 const options: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
@@ -185,7 +201,7 @@ const options: NextAuthOptions = {
         session.user.emailVerified = token.emailVerified;
         
         // Yönlendirme URL'ini session'a ekleyelim
-        session.redirectUrl = token.redirectUrl;
+        (session as CustomSession).redirectUrl = token.redirectUrl;
       }
       return session;
     },
@@ -296,7 +312,7 @@ const options: NextAuthOptions = {
   },
   pages: {
     signIn: "/giris-yap",
-    signOut: "/giris-yap", // Çıkış sonrası giriş sayfasına yönlendir
+    signOut: "/account-deleted", // Çıkış sonrası account-deleted sayfasına yönlendir
     error: "/error-login", // Hata durumunda yönlendirme
   },
 };
