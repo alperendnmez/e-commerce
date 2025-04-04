@@ -7,6 +7,7 @@ import { orderTimelineService } from './orderTimelineService';
 import { productService } from './productService';
 import { stockService } from './stockService';
 import { OrderErrorType } from '../types/error';
+import { sendOrderStatusUpdateEmail } from '@/lib/mail';
 
 // OrderStatus değerlerini type-safe şekilde tanımlayalım
 type StatusTransitionType = {
@@ -217,87 +218,38 @@ export class OrderService {
    */
   async updateOrderStatus(orderId: number, newStatus: OrderStatus): Promise<FormattedOrder | null> {
     try {
-      // İlk olarak sipariş varlığını ve ilişkili verileri kontrol et
+      // İlgili siparişi detaylı bir şekilde bul
       const order = await prisma.order.findUnique({
         where: { id: orderId },
-        include: { 
-          orderItems: true,
-          payment: true // Ödeme bilgisini dahil et
-        }
+        include: getOrderIncludeObject()
       });
       
       if (!order) {
         throw new ApiError(
-          ErrorType.NOT_FOUND, 
-          `Order with ID ${orderId} not found`
+          ErrorType.NOT_FOUND,
+          `Order with ID ${orderId} not found`,
+          { orderId }
         );
       }
       
-      // Durum değişimi için özel validasyonlar
+      // Eğer sipariş durumu aynıysa, hiçbir şey yapmadan dön
+      if (order.status === newStatus) {
+        return formatOrder(order as unknown as OrderWithRelations);
+      }
       
-      // 1. Durum geçiş kurallarını kontrol et
+      // Geçerli durum geçişi kontrolü
       const allowedTransitions = VALID_STATUS_TRANSITIONS[order.status] || [];
       if (!allowedTransitions.includes(newStatus)) {
         throw new ApiError(
-          ErrorType.CONFLICT,
-          `Cannot change order status from ${order.status} to ${newStatus}`,
+          ErrorType.VALIDATION,
+          `Invalid status transition from ${order.status} to ${newStatus}`,
           { 
-            currentStatus: order.status, 
-            requestedStatus: newStatus,
-            errorType: OrderErrorType.INVALID_STATUS_TRANSITION 
+            currentStatus: order.status,
+            newStatus: newStatus,
+            orderId: orderId,
+            validTransitions: VALID_STATUS_TRANSITIONS[order.status]
           }
         );
-      }
-      
-      // 2. PAID durumuna geçiş için ödeme kontrolü
-      if (newStatus === OrderStatus.PAID) {
-        if (!order.payment || order.payment.status !== 'COMPLETED') {
-          throw new ApiError(
-            ErrorType.CONFLICT,
-            `Cannot mark order as PAID without a completed payment`,
-            { errorType: OrderErrorType.PAYMENT_FAILED }
-          );
-        }
-      }
-      
-      // 3. CANCELLED durumuna geçiş için tamamlanmış siparişlerde kontrol
-      if (newStatus === OrderStatus.CANCELLED && 
-         (order.status === OrderStatus.COMPLETED || order.status === OrderStatus.DELIVERED)) {
-        // Sipariş tamamlanmış veya teslim edilmiş ise iptal etmek yerine iade işlemi gerekebilir
-        throw new ApiError(
-          ErrorType.CONFLICT,
-          `Completed or delivered orders cannot be directly cancelled. Consider a return request instead.`,
-          { errorType: OrderErrorType.INVALID_STATUS_TRANSITION }
-        );
-      }
-      
-      // 4. SHIPPED ve DELIVERED statüleri için kargo numarası kontrolü
-      if ((newStatus === OrderStatus.SHIPPED || newStatus === OrderStatus.DELIVERED) && 
-          !order.trackingNumber) {
-        // Uyarı olarak log kaydedelim (opsiyonel olarak bir hata da fırlatılabilir)
-        console.warn(`Warning: Setting order ${orderId} to ${newStatus} without a tracking number`);
-      }
-      
-      // OrderTimelineService kullanarak zaman çizelgesi girişi oluştur
-      const timelineEntry = await this.timelineService.createTimelineEntry({
-        orderId,
-        status: newStatus,
-        description: `Order status changed from ${order.status} to ${newStatus}`
-      });
-      
-      if (!timelineEntry) {
-        console.error(`Warning: Failed to create timeline entry for order ${orderId}`);
-        // Timeline oluşturmanın başarısız olması siparişin güncellenmesini engellemez
-      }
-      
-      // If the new status is CANCELLED, restore product stock
-      if (newStatus === OrderStatus.CANCELLED && order.orderItems?.length) {
-        try {
-          await this.restoreProductStock(prisma, order.orderItems);
-        } catch (stockError) {
-          console.error('Error restoring product stock:', stockError);
-          // Stok işlemlerinin başarısız olması siparişin güncellenmesini engellememeli
-        }
       }
       
       // Audit log için ek bilgiler içeren bir veri nesnesi oluştur
@@ -334,7 +286,48 @@ export class OrderService {
         return result;
       });
       
-      // Use an explicit cast with unknown as an intermediate step
+      // Sipariş zaman çizelgesine yeni durumu ekle
+      await prisma.orderTimeline.create({
+        data: {
+          orderId: orderId,
+          status: newStatus,
+          description: `Sipariş durumu ${newStatus} olarak güncellendi.`,
+          date: new Date(),
+        }
+      });
+      
+      // E-posta bildirimi gönderme
+      try {
+        const typedOrder = updatedOrder as unknown as OrderWithRelations;
+        // Formatlanmış sipariş nesnesini oluştur
+        const formattedOrder = formatOrder(typedOrder);
+        
+        // Kullanıcı bilgilerini kontrol et ve e-posta gönder
+        if (typedOrder.user && typeof typedOrder.user === 'object' && 'email' in typedOrder.user && typedOrder.user.email) {
+          let userName = '';
+          
+          if ('firstName' in typedOrder.user || 'lastName' in typedOrder.user) {
+            const userFirstName = 'firstName' in typedOrder.user ? typedOrder.user.firstName || '' : '';
+            const userLastName = 'lastName' in typedOrder.user ? typedOrder.user.lastName || '' : '';
+            userName = `${userFirstName} ${userLastName}`.trim();
+          }
+          
+          await sendOrderStatusUpdateEmail(
+            typedOrder.user.email.toString(),
+            userName,
+            formattedOrder,
+            order.status, // Önceki durum
+            newStatus    // Yeni durum
+          );
+          
+          console.log(`Sipariş durumu değişikliği e-postası gönderildi: ${typedOrder.user.email}`);
+        }
+      } catch (emailError) {
+        // E-posta gönderim hatasını logla ama işlemin devam etmesine izin ver
+        console.error('Sipariş durumu e-postası gönderilirken hata oluştu:', emailError);
+      }
+      
+      // Cast the order to the correct type
       return formatOrder(updatedOrder as unknown as OrderWithRelations);
     } catch (error) {
       console.error('Error updating order status:', error);

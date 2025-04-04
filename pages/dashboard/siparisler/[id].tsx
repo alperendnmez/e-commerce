@@ -21,7 +21,8 @@ import {
   MessageSquare,
   Printer,
   RefreshCcw,
-  Mail
+  Mail,
+  Send
 } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
 import {
@@ -38,6 +39,7 @@ import { format } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { MapPin, CreditCard } from 'lucide-react';
 import {
   Select,
@@ -89,10 +91,16 @@ const OrderDetailPage: NextPageWithLayout = () => {
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [notesDialogOpen, setNotesDialogOpen] = useState(false);
+  const [emailDialogOpen, setEmailDialogOpen] = useState(false);
   const [adminNotes, setAdminNotes] = useState('');
   const [processingStatus, setProcessingStatus] = useState(false);
   const [processingNotes, setProcessingNotes] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState<string>('');
+  
+  // E-posta formu için state
+  const [emailSubject, setEmailSubject] = useState('');
+  const [emailContent, setEmailContent] = useState('');
 
   useEffect(() => {
     if (status === 'authenticated' && id) {
@@ -102,6 +110,21 @@ const OrderDetailPage: NextPageWithLayout = () => {
     }
   }, [status, id]);
 
+  // Log product images when order data is received
+  useEffect(() => {
+    if (order && order.items) {
+      console.log("Order items image details:");
+      order.items.forEach(item => {
+        console.log(`Item ${item.id} (Product ${item.productId}):`, {
+          hasProductImage: !!item.productImage,
+          productImageUrl: item.productImage,
+          isValidImageUrl: item.productImage && typeof item.productImage === 'string' && 
+            (item.productImage.startsWith('http') || item.productImage.startsWith('/')),
+        });
+      });
+    }
+  }, [order]);
+
   const fetchOrderDetails = async () => {
     try {
       setLoading(true);
@@ -110,13 +133,27 @@ const OrderDetailPage: NextPageWithLayout = () => {
       setOrder(response.data);
       setAdminNotes(response.data.adminNotes || '');
       setSelectedStatus(response.data.status || '');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching order details:', error);
-      toast({
-        title: 'Hata',
-        description: 'Sipariş detayları alınırken bir hata oluştu.',
-        variant: 'destructive',
-      });
+      
+      // Check if it's a 403 Forbidden error
+      if (error.response && error.response.status === 403) {
+        toast({
+          title: 'Erişim Reddedildi',
+          description: 'Bu siparişi görüntüleme yetkiniz bulunmamaktadır.',
+          variant: 'destructive',
+        });
+        // Redirect back to the orders list page after a short delay
+        setTimeout(() => {
+          router.push('/dashboard/siparisler');
+        }, 2000);
+      } else {
+        toast({
+          title: 'Hata',
+          description: 'Sipariş detayları alınırken bir hata oluştu.',
+          variant: 'destructive',
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -197,6 +234,66 @@ const OrderDetailPage: NextPageWithLayout = () => {
     }
   };
 
+  // E-posta gönderme fonksiyonu
+  const handleSendEmail = async () => {
+    if (!emailContent.trim()) {
+      toast({
+        title: 'Hata',
+        description: 'E-posta içeriği boş olamaz.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
+    try {
+      setSendingEmail(true);
+      
+      const response = await axios.post('/api/orders/send-email', {
+        orderId: id,
+        emailContent,
+        subject: emailSubject || `Siparişiniz #${order?.orderNumber} Hakkında`
+      });
+      
+      toast({
+        title: 'Başarılı',
+        description: 'E-posta başarıyla gönderildi.',
+      });
+      
+      // Formu temizle ve modalı kapat
+      setEmailContent('');
+      setEmailSubject('');
+      setEmailDialogOpen(false);
+      
+    } catch (error: any) {
+      console.error('Error sending email:', error);
+      toast({
+        title: 'Hata',
+        description: error.response?.data?.error || 'E-posta gönderilirken bir hata oluştu.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSendingEmail(false);
+    }
+  };
+
+  // E-posta içeriğini oluşturma fonksiyonu
+  const generateEmailTemplate = () => {
+    if (!order) return '';
+    
+    // Stok sorunları için örnek bir gecikme e-posta şablonu
+    const customerName = order.user?.firstName || order.user?.lastName 
+      ? `${order.user?.firstName || ''} ${order.user?.lastName || ''}`.trim() 
+      : 'Değerli Müşterimiz';
+      
+    return `Öncelikle siparişiniz için teşekkür ederiz.
+
+Siparişinizde yer alan ürünlerden bazıları için tedarik sürecinde bir gecikme yaşıyoruz. Bu durum nedeniyle siparişinizin tahmini teslimat süresi uzayabilir.
+
+Siparişiniz en kısa sürede hazırlanıp kargoya verilecektir. Bu gecikme için özür dileriz.
+
+İlginiz ve anlayışınız için teşekkür ederiz.`;
+  };
+
   const getStatusIcon = (status: string) => {
     const upperStatus = status.toUpperCase();
     
@@ -210,20 +307,39 @@ const OrderDetailPage: NextPageWithLayout = () => {
   };
 
   const renderOrderItems = () => {
-    if (!order) return null;
-    
-    console.log("Order items:", order.items);
-    
-    return order.items.map((item: FormattedOrderItem) => (
+    if (!order?.items || order.items.length === 0) {
+      return (
+        <TableRow>
+          <TableCell colSpan={4} className="text-center py-6 text-gray-500">
+            Sipariş ürünleri bulunamadı
+          </TableCell>
+        </TableRow>
+      );
+    }
+
+    return order.items.map((item) => (
       <TableRow key={item.id}>
         <TableCell>
           <div className="flex items-center space-x-3">
-            <div className="h-10 w-10 bg-gray-100 rounded overflow-hidden">
-              {item.productImage ? (
+            <div className="h-10 w-10 bg-gray-100 rounded overflow-hidden relative">
+              {item.productImage && typeof item.productImage === 'string' ? (
                 <img
                   src={item.productImage}
                   alt={item.productName || 'Ürün görseli'}
                   className="h-full w-full object-cover"
+                  onError={(e) => {
+                    console.log(`Image load error for product ID ${item.productId}`);
+                    const target = e.target as HTMLImageElement;
+                    // Replace with fallback icon
+                    target.style.display = 'none';
+                    const parent = target.parentElement;
+                    if (parent) {
+                      parent.classList.add('flex', 'items-center', 'justify-center', 'bg-gray-200');
+                      const iconElement = document.createElement('div');
+                      iconElement.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-5 w-5 text-gray-400"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.29 7 12 12 20.71 7"></polyline><line x1="12" y1="22" x2="12" y2="12"></line></svg>';
+                      parent.appendChild(iconElement);
+                    }
+                  }}
                 />
               ) : (
                 <div className="h-full w-full flex items-center justify-center bg-gray-200">
@@ -340,7 +456,14 @@ const OrderDetailPage: NextPageWithLayout = () => {
               Yazdır
             </Button>
             {order && order.user && 'email' in order.user && order.user.email && (
-              <Button variant="outline" size="sm" onClick={() => window.location.href = `mailto:${order.user.email}?subject=Siparişiniz%20Hakkında%20-%20${order.orderNumber}`}>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => {
+                  setEmailContent(generateEmailTemplate());
+                  setEmailDialogOpen(true);
+                }}
+              >
                 <Mail className="h-4 w-4 mr-2" />
                 E-posta Gönder
               </Button>
@@ -408,16 +531,16 @@ const OrderDetailPage: NextPageWithLayout = () => {
                           />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value={order?.status || ''}>
+                          <SelectItem value={order?.status || 'PENDING'}>
                             <div className="flex items-center">
-                              <Badge className={`mr-2 ${getStatusColor(order?.status || '')}`}>
-                                <span className="truncate">{getStatusText(order?.status || '')}</span>
+                              <Badge className={`mr-2 ${getStatusColor(order?.status || 'PENDING')}`}>
+                                <span className="truncate">{getStatusText(order?.status || 'PENDING')}</span>
                               </Badge>
                               <span>(Mevcut)</span>
                             </div>
                           </SelectItem>
 
-                          {order && getValidNextStatuses(order.status).map(status => (
+                          {order && getValidNextStatuses(order.status || 'PENDING').map(status => (
                             <SelectItem key={status} value={status}>
                               <div className="flex items-center">
                                 <Badge className={`mr-2 ${getStatusColor(status)}`}>
@@ -428,7 +551,7 @@ const OrderDetailPage: NextPageWithLayout = () => {
                           ))}
                         </SelectContent>
                       </Select>
-                      {order && getValidNextStatuses(order.status).length === 0 && (
+                      {order && getValidNextStatuses(order.status || 'PENDING').length === 0 && (
                         <p className="text-xs text-muted-foreground mt-2">
                           Bu durum için başka değişiklik yapılamaz.
                         </p>
@@ -457,16 +580,18 @@ const OrderDetailPage: NextPageWithLayout = () => {
                                 
                                 if (typeof event === 'object' && event !== null) {
                                   // date veya createdAt özelliğine sahip mi kontrol edelim
-                                  if ('date' in event && event.date) {
+                                  if ('date' in event && event.date && 
+                                      (typeof event.date === 'string' || event.date instanceof Date)) {
                                     eventDate = event.date;
-                                  } else if ('createdAt' in event && event.createdAt) {
+                                  } else if ('createdAt' in event && event.createdAt && 
+                                            (typeof event.createdAt === 'string' || event.createdAt instanceof Date)) {
                                     eventDate = event.createdAt;
                                   }
                                 }
                                 
                                 return eventDate ? format(new Date(eventDate), 'dd MMMM yyyy - HH:mm') : 'Tarih bilgisi yok';
                               } catch (error) {
-                                console.error('Invalid date format:', event);
+                                console.error('Invalid date format:', error);
                                 return 'Geçersiz tarih formatı';
                               }
                             })()}
@@ -640,6 +765,70 @@ const OrderDetailPage: NextPageWithLayout = () => {
                   Kaydediliyor...
                 </>
               ) : 'Kaydet'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* E-posta Gönderme Dialog */}
+      <Dialog open={emailDialogOpen} onOpenChange={setEmailDialogOpen}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>Müşteriye E-posta Gönder</DialogTitle>
+            <DialogDescription>
+              Sipariş #{order?.orderNumber} için müşteri {order?.user?.email} adresine e-posta gönderin.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="subject">E-posta Konusu</Label>
+              <Input
+                id="subject"
+                placeholder="Siparişiniz Hakkında"
+                value={emailSubject}
+                onChange={(e) => setEmailSubject(e.target.value)}
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="content">E-posta İçeriği</Label>
+              <Textarea
+                id="content"
+                placeholder="E-posta içeriğini yazın..."
+                value={emailContent}
+                onChange={(e) => setEmailContent(e.target.value)}
+                rows={12}
+                className="min-h-[200px]"
+              />
+              <p className="text-sm text-muted-foreground mt-2">
+                Not: E-posta otomatik olarak giriş metni ve müşteri adı ile başlayacaktır.
+              </p>
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => setEmailDialogOpen(false)}
+            >
+              İptal
+            </Button>
+            <Button 
+              onClick={handleSendEmail}
+              disabled={sendingEmail}
+            >
+              {sendingEmail ? (
+                <>
+                  <RefreshCcw className="h-4 w-4 mr-2 animate-spin" />
+                  Gönderiliyor...
+                </>
+              ) : (
+                <>
+                  <Send className="h-4 w-4 mr-2" />
+                  E-posta Gönder
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -10,6 +10,7 @@ import { createSuccessResponse, createErrorResponse } from '@/types/api-response
 import { ErrorType } from '@/lib/errorHandler';
 import { OrderErrorType } from '@/types/error';
 import { getValidNextStatuses } from '@/lib/orderStatusUtils';
+import { sendOrderStatusUpdateEmail } from '@/lib/mail';
 
 export default async function handler(
   req: NextApiRequest,
@@ -22,6 +23,15 @@ export default async function handler(
     if (!session) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
+
+    // Log session details for debugging
+    console.log('Session details:', {
+      userId: session.user.id,
+      email: session.user.email,
+      role: session.user.role,
+      method: req.method,
+      path: req.url,
+    });
 
     const userId = parseInt(session.user.id);
     const { id } = req.query;
@@ -75,9 +85,22 @@ export default async function handler(
         }
 
         // Kullanıcının kendi siparişi mi kontrol et
-        if (order.userId !== userId) {
+        if (order.userId !== userId && session.user.role !== 'ADMIN') {
           return res.status(403).json({ error: 'Forbidden' });
         }
+        
+        // Log the complete order details for debugging
+        console.log(`Full order structure for order ID ${order.id}:`, {
+          orderItemsCount: order.orderItems.length,
+          hasProducts: order.orderItems.map(item => !!item.product),
+          productDetails: order.orderItems.map(item => ({
+            itemId: item.id,
+            productId: item.productId,
+            productName: item.product?.name,
+            hasImageUrls: !!item.product?.imageUrls,
+            imageUrlsLength: item.product?.imageUrls?.length || 0
+          }))
+        });
 
         // API yanıtını oluştur
         const response = {
@@ -95,19 +118,27 @@ export default async function handler(
           shippingMethod: order.shippingMethod,
           trackingNumber: order.trackingNumber,
           adminNotes: order.adminNotes,
-          items: order.orderItems.map(item => ({
-            id: item.id,
-            productId: item.productId,
-            variantId: item.variantId,
-            quantity: item.quantity,
-            price: item.price,
-            total: item.price * item.quantity,
-            productName: item.product?.name || 'Ürün adı bulunamadı',
-            productSlug: item.product?.slug,
-            productImage: item.product?.imageUrls && item.product.imageUrls.length > 0 
-              ? item.product.imageUrls[0] 
-              : null,
-          })),
+          items: order.orderItems.map(item => {
+            console.log(`Order ${order.id} - Item ${item.id} - Product ${item.productId} - Image URLs:`, {
+              hasProduct: !!item.product,
+              imageUrls: item.product?.imageUrls,
+              firstImage: item.product?.imageUrls?.[0] || null
+            });
+            
+            return {
+              id: item.id,
+              productId: item.productId,
+              variantId: item.variantId,
+              quantity: item.quantity,
+              price: item.price,
+              total: item.price * item.quantity,
+              productName: item.product?.name || 'Ürün adı bulunamadı',
+              productSlug: item.product?.slug,
+              productImage: item.product?.imageUrls && item.product.imageUrls.length > 0 
+                ? item.product.imageUrls[0] 
+                : '/images/product-placeholder.jpg',
+            };
+          }),
           timeline: order.timeline.map(entry => ({
             id: entry.id,
             status: entry.status,
@@ -161,7 +192,32 @@ export default async function handler(
           
           // Mevcut siparişi getir
           const currentOrder = await prisma.order.findUnique({
-            where: { id: orderId }
+            where: { id: orderId },
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  email: true,
+                  firstName: true,
+                  lastName: true,
+                }
+              },
+              orderItems: {
+                include: {
+                  product: {
+                    select: {
+                      id: true,
+                      name: true,
+                      slug: true,
+                      imageUrls: true,
+                    },
+                  },
+                  variant: true,
+                }
+              },
+              shippingAddress: true,
+              billingAddress: true,
+            }
           });
           
           if (!currentOrder) {
@@ -188,6 +244,52 @@ export default async function handler(
               date: new Date(),
             }
           });
+          
+          // E-posta bildirimi gönderme
+          try {
+            // Formatlanmış sipariş bilgilerini hazırla
+            const formattedOrder = {
+              id: currentOrder.id,
+              orderNumber: currentOrder.orderNumber || `ORDER-${currentOrder.id}`,
+              createdAt: currentOrder.createdAt,
+              updatedAt: new Date(),
+              totalPrice: currentOrder.totalPrice,
+              subtotal: currentOrder.subtotal,
+              taxAmount: currentOrder.taxAmount,
+              shippingCost: currentOrder.shippingCost,
+              discountAmount: currentOrder.discountAmount,
+              trackingNumber: currentOrder.trackingNumber,
+              items: currentOrder.orderItems.map(item => ({
+                id: item.id,
+                productId: item.productId,
+                productName: item.product?.name || 'Ürün adı bulunamadı',
+                productImage: item.product?.imageUrls && item.product.imageUrls.length > 0 
+                  ? item.product.imageUrls[0] 
+                  : null,
+                quantity: item.quantity,
+                price: item.price,
+                total: item.price * item.quantity,
+                variantDetails: item.variant ? `Varyant: ${item.variant.id}` : null,
+              })),
+              shippingAddress: currentOrder.shippingAddress,
+              billingAddress: currentOrder.billingAddress,
+            };
+            
+            // Kullanıcıya e-posta gönder
+            if (currentOrder.user && currentOrder.user.email) {
+              await sendOrderStatusUpdateEmail(
+                currentOrder.user.email,
+                `${currentOrder.user.firstName || ''} ${currentOrder.user.lastName || ''}`.trim(),
+                formattedOrder,
+                currentOrder.status,
+                status
+              );
+              console.log(`Order status update email sent to ${currentOrder.user.email}`);
+            }
+          } catch (emailError) {
+            // E-posta gönderiminde hata olursa loglama yap ancak API yanıtını etkilemesin
+            console.error('Failed to send order status email:', emailError);
+          }
         }
         
         // Admin notları güncellemesi
