@@ -24,7 +24,6 @@ interface UserProfile {
   birthDate: string | null;
   gender: string | null;
   createdAt: string;
-  isOAuthUser?: boolean;
 }
 
 export default function SettingsPage() {
@@ -48,10 +47,6 @@ export default function SettingsPage() {
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [deletePassword, setDeletePassword] = useState('');
-  const [passwordError, setPasswordError] = useState('');
-  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     if (status === 'authenticated') {
@@ -223,50 +218,6 @@ export default function SettingsPage() {
     }
   };
 
-  const handleDeleteAccount = async () => {
-    if (profile?.isOAuthUser) {
-      // Google hesabı için şifre kontrolü yapma
-      await deleteAccount();
-    } else {
-      // Normal hesaplar için şifre kontrol et
-      if (!deletePassword) {
-        setPasswordError('Hesabınızı silmek için şifrenizi girmelisiniz');
-        return;
-      }
-      await deleteAccount(deletePassword);
-    }
-  };
-
-  const deleteAccount = async (password?: string) => {
-    try {
-      setIsDeleting(true);
-      setPasswordError('');
-
-      const data = password ? { password } : {};
-      const response = await axios.delete('/api/user/delete-account', { data });
-      
-      // Kullanıcıyı oturumdan çıkar ve ana sayfaya yönlendir
-      router.push('/api/auth/signout?callbackUrl=/');
-      
-      toast({
-        description: 'Hesabınız başarıyla silindi.',
-      });
-    } catch (error: any) {
-      console.error('Error deleting account:', error);
-      
-      if (error.response?.status === 400 && error.response?.data?.error === 'Geçersiz şifre') {
-        setPasswordError('Geçersiz şifre. Lütfen doğru şifrenizi girin.');
-      } else {
-        toast({
-          description: error.response?.data?.error || 'Hesap silinirken bir hata oluştu.',
-          variant: 'destructive',
-        });
-      }
-    } finally {
-      setIsDeleting(false);
-    }
-  };
-
   if (loading) {
     return (
       <CustomerLayout>
@@ -308,14 +259,6 @@ export default function SettingsPage() {
           <div>
             <h1 className="text-2xl font-bold">{profile?.name}</h1>
             <p className="text-gray-500">{profile?.email}</p>
-            {profile?.isOAuthUser && (
-              <div className="mt-2 px-3 py-1 bg-blue-50 text-blue-700 text-sm rounded-md inline-flex items-center">
-                <svg className="w-4 h-4 mr-1" viewBox="0 0 488 512" fill="currentColor">
-                  <path d="M488 261.8C488 403.3 391.1 504 248 504 110.8 504 0 393.2 0 256S110.8 8 248 8c66.8 0 123 24.5 166.3 64.9l-67.5 64.9C258.5 52.6 94.3 116.6 94.3 256c0 86.5 69.1 156.6 153.7 156.6 98.2 0 135-70.4 140.8-106.9H248v-85.3h236.1c2.3 12.7 3.9 24.9 3.9 41.4z" />
-                </svg>
-                Google hesabı ile giriş yapıldı
-              </div>
-            )}
           </div>
         </div>
 
@@ -325,12 +268,10 @@ export default function SettingsPage() {
               <User className="mr-2 h-4 w-4" />
               Profil
             </TabsTrigger>
-            {!profile?.isOAuthUser && (
-              <TabsTrigger value="password" className="flex items-center">
-                <Lock className="mr-2 h-4 w-4" />
-                Şifre
-              </TabsTrigger>
-            )}
+            <TabsTrigger value="password" className="flex items-center">
+              <Lock className="mr-2 h-4 w-4" />
+              Şifre
+            </TabsTrigger>
             <TabsTrigger value="notifications" className="flex items-center">
               <Bell className="mr-2 h-4 w-4" />
               Bildirimler
@@ -422,78 +363,54 @@ export default function SettingsPage() {
           </TabsContent>
 
           <TabsContent value="password">
-            {profile?.isOAuthUser ? (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Google Hesabı ile Giriş</CardTitle>
-                  <CardDescription>
-                    Google hesabınız ile giriş yaptığınız için şifre değiştirmeniz gerekli değildir. Google hesap şifrenizi değiştirmek için doğrudan Google'ın kendi hesap ayarlarını kullanmanız gerekir.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="p-4 bg-blue-50 rounded-md">
-                    <p className="text-blue-800">
-                      Google hesabınızın şifresini değiştirmek için <a href="https://myaccount.google.com/security" target="_blank" rel="noopener noreferrer" className="font-medium underline">Google Hesap Güvenliği</a> sayfasını ziyaret edebilirsiniz.
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            ) : (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Şifre Değiştir</CardTitle>
-                  <CardDescription>
-                    Hesabınızın güvenliği için şifrenizi düzenli olarak değiştirmenizi öneririz.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="currentPassword">Mevcut Şifre</Label>
-                    <Input
-                      id="currentPassword"
-                      name="currentPassword"
-                      type="password"
-                      value={formData.currentPassword}
-                      onChange={handleInputChange}
-                    />
-                    {formErrors.currentPassword && <p className="text-red-500 text-xs">{formErrors.currentPassword}</p>}
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="newPassword">Yeni Şifre</Label>
-                    <Input
-                      id="newPassword"
-                      name="newPassword"
-                      type="password"
-                      value={formData.newPassword}
-                      onChange={handleInputChange}
-                    />
-                    {formErrors.newPassword && <p className="text-red-500 text-xs">{formErrors.newPassword}</p>}
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="confirmPassword">Yeni Şifre (Tekrar)</Label>
-                    <Input
-                      id="confirmPassword"
-                      name="confirmPassword"
-                      type="password"
-                      value={formData.confirmPassword}
-                      onChange={handleInputChange}
-                    />
-                    {formErrors.confirmPassword && <p className="text-red-500 text-xs">{formErrors.confirmPassword}</p>}
-                  </div>
-                  
-                  <div className="p-3 bg-yellow-50 rounded-md mt-4">
-                    <p className="text-yellow-800 text-sm">
-                      <strong>Not:</strong> Eğer daha önce Google ile giriş yaptıysanız ve şimdi normal şifre ile giriş yapmak istiyorsanız, önce "Şifremi Unuttum" seçeneğini kullanmanız gerekebilir.
-                    </p>
-                  </div>
-                </CardContent>
-                <CardFooter className="flex justify-end">
-                  <Button onClick={handleUpdatePassword} disabled={saving}>
-                    {saving ? 'Kaydediliyor...' : 'Şifreyi Değiştir'}
-                  </Button>
-                </CardFooter>
-              </Card>
-            )}
+            <Card>
+              <CardHeader>
+                <CardTitle>Şifre Değiştir</CardTitle>
+                <CardDescription>
+                  Hesabınızın güvenliği için şifrenizi düzenli olarak değiştirmenizi öneririz.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="currentPassword">Mevcut Şifre</Label>
+                  <Input
+                    id="currentPassword"
+                    name="currentPassword"
+                    type="password"
+                    value={formData.currentPassword}
+                    onChange={handleInputChange}
+                  />
+                  {formErrors.currentPassword && <p className="text-red-500 text-xs">{formErrors.currentPassword}</p>}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="newPassword">Yeni Şifre</Label>
+                  <Input
+                    id="newPassword"
+                    name="newPassword"
+                    type="password"
+                    value={formData.newPassword}
+                    onChange={handleInputChange}
+                  />
+                  {formErrors.newPassword && <p className="text-red-500 text-xs">{formErrors.newPassword}</p>}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="confirmPassword">Yeni Şifre (Tekrar)</Label>
+                  <Input
+                    id="confirmPassword"
+                    name="confirmPassword"
+                    type="password"
+                    value={formData.confirmPassword}
+                    onChange={handleInputChange}
+                  />
+                  {formErrors.confirmPassword && <p className="text-red-500 text-xs">{formErrors.confirmPassword}</p>}
+                </div>
+              </CardContent>
+              <CardFooter className="flex justify-end">
+                <Button onClick={handleUpdatePassword} disabled={saving}>
+                  {saving ? 'Kaydediliyor...' : 'Şifreyi Değiştir'}
+                </Button>
+              </CardFooter>
+            </Card>
           </TabsContent>
 
           <TabsContent value="notifications">
@@ -595,56 +512,9 @@ export default function SettingsPage() {
                     <p className="text-sm text-gray-500 mb-2">
                       Hesabınızı ve tüm verilerinizi kalıcı olarak silin. Bu işlem geri alınamaz.
                     </p>
-                    <Button variant="destructive" size="sm" onClick={() => setShowDeleteConfirm(true)}>
+                    <Button variant="destructive" size="sm">
                       Hesabı Sil
                     </Button>
-                    
-                    {showDeleteConfirm && (
-                      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                        <div className="bg-white p-6 rounded-lg w-full max-w-md mx-4">
-                          <h3 className="text-xl font-bold mb-4">Hesabınızı Silmek İstediğinize Emin Misiniz?</h3>
-                          <p className="text-gray-600 mb-4">
-                            Bu işlem kalıcıdır ve geri alınamaz. Tüm verileriniz, siparişleriniz, adresleriniz ve diğer bilgileriniz silinecektir.
-                          </p>
-                          
-                          {!profile?.isOAuthUser && (
-                            <div className="mb-4">
-                              <Label htmlFor="deletePassword">Şifrenizi Girin</Label>
-                              <Input
-                                id="deletePassword"
-                                type="password"
-                                value={deletePassword}
-                                onChange={(e) => setDeletePassword(e.target.value)}
-                                className="mt-1"
-                                placeholder="İşlemi onaylamak için şifrenizi girin"
-                              />
-                              {passwordError && <p className="text-red-500 text-xs mt-1">{passwordError}</p>}
-                            </div>
-                          )}
-                          
-                          <div className="flex justify-end space-x-3 mt-6">
-                            <Button
-                              variant="outline"
-                              onClick={() => {
-                                setShowDeleteConfirm(false);
-                                setDeletePassword('');
-                                setPasswordError('');
-                              }}
-                              disabled={isDeleting}
-                            >
-                              İptal
-                            </Button>
-                            <Button
-                              variant="destructive"
-                              onClick={handleDeleteAccount}
-                              disabled={isDeleting}
-                            >
-                              {isDeleting ? 'İşleniyor...' : 'Hesabımı Sil'}
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 </div>
               </CardContent>

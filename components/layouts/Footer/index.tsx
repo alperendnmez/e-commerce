@@ -49,8 +49,8 @@ export default function Footer() {
         <div className='col-span-1 col-start-auto flex flex-col gap-8 font-medium lg:col-span-2 lg:col-start-4'>
           <h3 className='uppercase text-background'>Hakkımızda</h3>
           <ul className='space-y-1'>
-            <li>Gizlilik Politikası</li>
-            <li>Kullanım Koşulları</li>
+            <li><Link href="/kvkk-sozlesmesi">KVKK Sözleşmesi</Link></li>
+            <li><Link href="/uyelik-sozlesmesi">Üyelik Sözleşmesi</Link></li>
             <li>Neden Furnico</li>
             <li>Haber Bülteni</li>
           </ul>

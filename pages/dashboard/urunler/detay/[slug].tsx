@@ -38,15 +38,17 @@ interface Variant {
   id: number
   productId: number
   price: number
-  comparativePrice: number | null
-  costPerItem: number | null
+  comparativePrice?: number
+  costPerItem?: number
   stock: number
-  imageUrls: string[]
-  variantValues?: Array<{
+  sku?: string
+  barcode?: string
+  imageUrls?: string[]
+  variantValues?: {
     id: number
     value: string
     variantGroupId: number
-  }>
+  }[]
 }
 
 interface VariantValue {
@@ -638,13 +640,15 @@ function ProductDetail() {
             </CardHeader>
             <CardContent>
               {hasVariants ? (
-                <div className="border rounded-md">
+                <div className="border rounded-md overflow-x-auto">
                   <table className="w-full">
                     <thead>
                       <tr className="border-b">
                         <th className="py-3 px-4 text-left font-medium text-sm">Varyant</th>
                         <th className="py-3 px-4 text-right font-medium text-sm">Stok</th>
                         <th className="py-3 px-4 text-right font-medium text-sm">Fiyat</th>
+                        <th className="py-3 px-4 text-right font-medium text-sm">SKU</th>
+                        <th className="py-3 px-4 text-right font-medium text-sm">Barkod</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -676,6 +680,20 @@ function ProductDetail() {
                             </td>
                             <td className="py-3 px-4 text-right font-medium">
                               {variant.price.toFixed(2)} TL
+                            </td>
+                            <td className="py-3 px-4 text-right">
+                              {variant.sku ? (
+                                <span className="font-medium">{variant.sku}</span>
+                              ) : (
+                                <span className="text-muted-foreground text-sm italic">Yok</span>
+                              )}
+                            </td>
+                            <td className="py-3 px-4 text-right">
+                              {variant.barcode ? (
+                                <span className="font-medium">{variant.barcode}</span>
+                              ) : (
+                                <span className="text-muted-foreground text-sm italic">Yok</span>
+                              )}
                             </td>
                           </tr>
                         );
@@ -738,6 +756,70 @@ function ProductDetail() {
                   <p className="text-sm text-muted-foreground mt-2">Görsel yok</p>
                 </div>
               )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* SEO Sekmesi - Eklenen Kısım */}
+        <TabsContent value="seo" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>SEO Bilgileri</CardTitle>
+              <CardDescription>
+                Arama motorları için optimize edilmiş başlık ve açıklama
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* SEO Başlığı */}
+              <div>
+                <h3 className="font-medium text-sm mb-2">SEO Başlığı</h3>
+                {product.seoTitle ? (
+                  <div className="p-4 border rounded-md bg-slate-50">
+                    <p className="font-medium">{product.seoTitle}</p>
+                  </div>
+                ) : (
+                  <div className="p-4 border rounded-md bg-slate-50">
+                    <p className="text-muted-foreground italic">SEO başlığı tanımlanmamış. Ürün başlığı kullanılacak.</p>
+                    <p className="font-medium mt-2">{product.name}</p>
+                  </div>
+                )}
+              </div>
+
+              {/* SEO Açıklaması */}
+              <div>
+                <h3 className="font-medium text-sm mb-2">SEO Açıklaması</h3>
+                {product.seoDescription ? (
+                  <div className="p-4 border rounded-md bg-slate-50">
+                    <p>{product.seoDescription}</p>
+                  </div>
+                ) : (
+                  <div className="p-4 border rounded-md bg-slate-50">
+                    <p className="text-muted-foreground italic">SEO açıklaması tanımlanmamış. Ürün açıklamasının bir kısmı kullanılacak.</p>
+                    {product.description ? (
+                      <p className="mt-2">{product.description.substring(0, 160)}...</p>
+                    ) : (
+                      <p className="text-muted-foreground italic mt-2">Ürün açıklaması da bulunmuyor.</p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* URL/Slug */}
+              <div>
+                <h3 className="font-medium text-sm mb-2">URL (Slug)</h3>
+                <div className="p-4 border rounded-md bg-slate-50">
+                  <p className="font-mono text-sm">/{product.slug}</p>
+                </div>
+              </div>
+
+              {/* SEO Düzenleme Butonu */}
+              <div className="flex justify-end">
+                <Button variant="outline" asChild>
+                  <Link href={`/dashboard/urunler/${product.slug}`}>
+                    <Edit className="mr-2 h-4 w-4" /> SEO Bilgilerini Düzenle
+                  </Link>
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

@@ -1,8 +1,18 @@
-import { NextApiRequest, NextApiResponse } from "next";
-import { PrismaClient } from "@prisma/client";
-import bcrypt from "bcrypt";
+import bcrypt from 'bcrypt'
+import { NextApiRequest, NextApiResponse } from 'next'
+import prisma from '@/lib/prisma'
+import { z } from 'zod'
+import { sendWelcomeEmail } from '@/lib/mail'
 
-const prisma = new PrismaClient();
+// Girdi doğrulama şeması
+const SignupSchema = z.object({
+  firstName: z.string().min(1, 'Ad boş olamaz'),
+  lastName: z.string().min(1, 'Soyad boş olamaz'),
+  email: z.string().email('Geçerli bir e-posta adresi giriniz'),
+  password: z.string().min(6, 'Şifre en az 6 karakter olmalı'),
+  phone: z.string().optional(),
+  address: z.string().optional(),
+});
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   console.log("Received request:", req.method, req.body);
@@ -13,53 +23,65 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const { email, password, confirmPassword, firstName, lastName } = req.body;
-    console.log("Parsed body:", email, password, confirmPassword, firstName, lastName);
-
-    // Gerekli alanları kontrol et
-    if (!email || !password || !confirmPassword || !firstName || !lastName) {
-      console.log("Missing required fields");
-      return res.status(400).json({ error: "Email, password, confirmPassword, firstName ve lastName gerekli" });
-    }
-
-    // Şifrelerin eşleştiğini kontrol et
-    if (password !== confirmPassword) {
-      console.log("Passwords do not match");
-      return res.status(400).json({ error: "Passwords do not match" });
-    }
-
-    // Kullanıcının zaten var olup olmadığını kontrol et
+    // Girdi doğrulaması yap
+    const validatedData = SignupSchema.parse(req.body)
+    
+    // E-posta adresi var mı kontrol et
     const existingUser = await prisma.user.findUnique({
-      where: { email },
-    });
-    console.log("Existing user:", existingUser);
+      where: { email: validatedData.email },
+    })
 
     if (existingUser) {
-      console.log("User already exists");
-      return res.status(400).json({ error: "User already exists" });
+      console.log(`Kayıt hatası: ${validatedData.email} adresi zaten kullanımda`);
+      return res
+        .status(400)
+        .json({ error: 'Bu e-posta adresi zaten kullanılıyor.' })
     }
 
-    // Şifreyi hash'le
-    const hashedPassword = await bcrypt.hash(password, 10);
-    console.log("Hashed password:", hashedPassword);
+    // Şifreyi hashle
+    const hashedPassword = await bcrypt.hash(validatedData.password, 10)
 
-    // Yeni kullanıcıyı oluştur
+    console.log(`Yeni kullanıcı oluşturuluyor: ${validatedData.email}`);
+    
+    // Kullanıcıyı veritabanına kaydet
     const newUser = await prisma.user.create({
       data: {
-        email,
+        firstName: validatedData.firstName,
+        lastName: validatedData.lastName,
+        email: validatedData.email,
         password: hashedPassword,
-        firstName,
-        lastName,
-        emailVerified: new Date(), // E-posta doğrulamasını otomatik olarak tamamla
-        emailVerificationToken: null, // Token'ı null olarak ayarla
-        tokenExpires: null, // Token süresini null olarak ayarla
+        phone: validatedData.phone || '',
+        role: 'USER', // Varsayılan rol kullanıcı
       },
-    });
-    console.log("New user created:", newUser);
+    })
 
-    return res.status(201).json({ message: "User created successfully. You can now log in." });
+    console.log(`Kullanıcı başarıyla oluşturuldu, ID: ${newUser.id}`);
+    console.log(`${newUser.email} adresine hoş geldiniz e-postası gönderiliyor...`);
+
+    // Hoş geldiniz e-postası gönder
+    const emailResult = await sendWelcomeEmail(newUser.email, newUser.firstName);
+    console.log(`E-posta gönderim sonucu: ${emailResult ? 'Başarılı' : 'Başarısız'}`);
+
+    // Hassas alanları kaldır
+    const { password, ...userWithoutPassword } = newUser
+
+    console.log(`Kayıt işlemi tamamlandı: ${newUser.email}`);
+    
+    return res.status(201).json({
+      user: userWithoutPassword,
+      message: 'Kullanıcı oluşturuldu. Şimdi giriş yapabilirsiniz.',
+      emailSent: emailResult
+    })
   } catch (error) {
-    console.error("Signup error:", error);
-    return res.status(500).json({ error: "Internal server error" });
+    console.error('Kayıt hatası:', error)
+    
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ 
+        error: 'Geçersiz veri', 
+        details: error.errors 
+      })
+    }
+    
+    return res.status(500).json({ error: 'Bir hata oluştu. Lütfen daha sonra tekrar deneyin.' })
   }
 }

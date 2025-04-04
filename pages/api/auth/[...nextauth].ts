@@ -1,9 +1,12 @@
 // pages/api/auth/[...nextauth].ts
 import NextAuth, { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
+import GoogleProvider from "next-auth/providers/google";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import bcrypt from "bcrypt";
 import prisma from '@/lib/prisma';
+import { getToken } from "next-auth/jwt";
+import { sendWelcomeEmail } from '@/lib/mail';
 
 // Rate limiter
 const LOGIN_ATTEMPTS = new Map();
@@ -44,6 +47,11 @@ const options: NextAuthOptions = {
     },
   },
   providers: [
+    GoogleProvider({
+      clientId: process.env.CLIENT_ID as string,
+      clientSecret: process.env.CLIENT_SECRET as string,
+      allowDangerousEmailAccountLinking: true,
+    }),
     CredentialsProvider({
       name: "Credentials",
       credentials: {
@@ -145,8 +153,9 @@ const options: NextAuthOptions = {
     }),
   ],
   callbacks: {
-    async jwt({ token, user }) {
-      log("JWT callback çalıştı", { tokenExists: !!token, userExists: !!user });
+    async jwt({ token, user, account, profile }) {
+      log("JWT callback çalıştı", { tokenExists: !!token, userExists: !!user, accountExists: !!account });
+      
       if (user) {
         token.id = user.id;
         token.email = user.email;
@@ -154,7 +163,14 @@ const options: NextAuthOptions = {
         token.firstName = user.firstName;
         token.lastName = user.lastName;
         token.emailVerified = user.emailVerified;
+        
+        // İlk giriş sırasında, yönlendirme URL'i belirle
+        if (account) {
+          token.isNewSession = true;
+          token.redirectUrl = user.role === 'ADMIN' ? '/dashboard' : '/';
+        }
       }
+      
       return token;
     },
     async session({ session, token }) {
@@ -167,12 +183,120 @@ const options: NextAuthOptions = {
         session.user.firstName = token.firstName;
         session.user.lastName = token.lastName;
         session.user.emailVerified = token.emailVerified;
+        
+        // Yönlendirme URL'ini session'a ekleyelim
+        session.redirectUrl = token.redirectUrl;
       }
       return session;
+    },
+    async redirect({ url, baseUrl }) {
+      // URL dahili bir sayfa ise (örn. /dashboard) doğrudan o sayfaya yönlendir
+      if (url.startsWith(baseUrl)) {
+        return url;
+      }
+      
+      // Harici URL'lere izin verme, varsayılan olarak ana sayfaya yönlendir
+      return baseUrl;
+    },
+    async signIn({ user, account, profile }) {
+      // Google ile giriş yapılmışsa veya kullanıcı varsa
+      if (account?.provider === 'google') {
+        // Kullanıcı bilgilerini güncelleme veya oluşturma
+        try {
+          const existingUser = await prisma.user.findUnique({
+            where: { email: user.email as string },
+          });
+
+          if (!existingUser) {
+            // Kullanıcı yoksa, yeni bir kullanıcı oluşturalım
+            try {
+              const newUser = await prisma.user.create({
+                data: {
+                  email: user.email as string,
+                  firstName: user.name?.split(' ')[0] || 'User',
+                  lastName: user.name?.split(' ').slice(1).join(' ') || '',
+                  password: await bcrypt.hash(Math.random().toString(36).slice(-10), 10),
+                  emailVerified: new Date(),
+                  role: "USER",
+                  userAgreementAccepted: true,
+                  kvkkAgreementAccepted: true,
+                  image: user.image,
+                },
+              });
+              
+              console.log("Yeni Google kullanıcısı oluşturuldu:", newUser.email);
+              
+              // Hoş geldiniz e-postası gönder
+              try {
+                await sendWelcomeEmail(
+                  newUser.email, 
+                  newUser.firstName
+                );
+                console.log("Hoş geldiniz e-postası gönderildi:", newUser.email);
+              } catch (emailError) {
+                console.error("Google kullanıcısına hoş geldiniz e-postası gönderilirken hata:", emailError);
+                // E-posta gönderiminde hata olsa bile kullanıcı oluşturmaya devam et
+              }
+            } catch (error) {
+              console.error("Google kullanıcısı oluşturulurken hata:", error);
+              return false;
+            }
+          } else {
+            // Mevcut kullanıcıyı güncelleyelim
+            try {
+              await prisma.user.update({
+                where: { id: Number(existingUser.id) },
+                data: {
+                  image: user.image,
+                  emailVerified: existingUser.emailVerified || new Date(),
+                  lastLogin: new Date(),
+                },
+              });
+
+              // Google hesabını mevcut hesaba bağlayalım
+              const existingAccount = await prisma.account.findFirst({
+                where: {
+                  provider: account.provider,
+                  providerAccountId: account.providerAccountId,
+                },
+              });
+
+              if (!existingAccount) {
+                await prisma.account.create({
+                  data: {
+                    userId: existingUser.id,
+                    type: account.type,
+                    provider: account.provider,
+                    providerAccountId: account.providerAccountId,
+                    access_token: account.access_token,
+                    expires_at: account.expires_at,
+                    token_type: account.token_type,
+                    scope: account.scope,
+                    id_token: account.id_token,
+                  },
+                });
+                
+                console.log("Google hesabı kullanıcıya bağlandı:", existingUser.email);
+              }
+            } catch (error) {
+              console.error("Google ile giriş yapan kullanıcı güncellenirken hata:", error);
+              return false;
+            }
+          }
+
+          return true;
+        } catch (error) {
+          console.error("Google signIn callback error:", error);
+          return false;
+        }
+      }
+      
+      return true;
     },
   },
   pages: {
     signIn: "/giris-yap",
+    signOut: "/giris-yap", // Çıkış sonrası giriş sayfasına yönlendir
     error: "/error-login", // Hata durumunda yönlendirme
   },
 };

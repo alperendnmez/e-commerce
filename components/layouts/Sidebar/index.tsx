@@ -322,7 +322,7 @@ export function DashboardSidebar() {
                 <DropdownMenuItem>
                   <span>Profil</span>
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => signOut()}>
+                <DropdownMenuItem onClick={() => signOut({ callbackUrl: '/giris-yap' })}>
                   <span>Çıkış Yap</span>
                 </DropdownMenuItem>
               </>

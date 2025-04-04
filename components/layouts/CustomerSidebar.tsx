@@ -124,7 +124,7 @@ export function CustomerSidebar({ className, isCollapsed = false }: SidebarProps
               "w-full", 
               isCollapsed ? "justify-center px-0" : "justify-start"
             )} 
-            onClick={() => signOut({ callbackUrl: '/' })}
+            onClick={() => signOut({ callbackUrl: '/giris-yap' })}
           >
             <LogOut className={cn("h-4 w-4", !isCollapsed && "mr-2")} />
             <span className={cn(isCollapsed && "hidden")}>Çıkış Yap</span>

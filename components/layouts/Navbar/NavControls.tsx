@@ -335,7 +335,7 @@ export default function NavControls() {
                   <span>Hesabım</span>
                 </DropdownMenuItem>
               </Link>
-              <DropdownMenuItem onClick={() => signOut()}>
+              <DropdownMenuItem onClick={() => signOut({ callbackUrl: '/giris-yap' })}>
                 <span>Çıkış Yap</span>
               </DropdownMenuItem>
             </>

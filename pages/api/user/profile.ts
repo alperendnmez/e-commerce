@@ -58,6 +58,14 @@ export default async function handler(
           return res.status(404).json({ error: 'User not found' });
         }
 
+        // Kullanıcının OAuth hesabı var mı kontrol et (Google, Facebook, vb.)
+        const oauthAccount = await prisma.account.findFirst({
+          where: {
+            userId: userId,
+            provider: { in: ['google', 'facebook', 'apple'] }
+          }
+        });
+
         // Get last 5 orders
         const recentOrders = await prisma.order.findMany({
           where: { userId: userId },
@@ -83,6 +91,7 @@ export default async function handler(
           ...user,
           name: `${user.firstName} ${user.lastName}`,
           image: user.avatarUrl,
+          isOAuthUser: !!oauthAccount, // OAuth hesabı varsa true, yoksa false
           recentOrders
         });
       } catch (error) {
